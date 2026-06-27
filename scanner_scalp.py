@@ -125,6 +125,7 @@ async def _prefilter_token(
     sr_zones    = find_sr_zones(candles_1h[-100:])
     sr_zone     = nearest_sr_zone(current_price, sr_zones)
     compression = check_volatility_compression(candles_1h)
+    atr_1h      = calc_atr(candles_1h, period=14)
 
     # critérios de pré-selecção (pelo menos 1 deve passar)
     has_sr          = sr_zone is not None
@@ -144,6 +145,7 @@ async def _prefilter_token(
         "sr_zones":    sr_zones,
         "sr_zone":     sr_zone,
         "compression": compression,
+        "atr_1h":      atr_1h,
     }
 
 
@@ -166,6 +168,7 @@ async def _analyze_candidate(
     vol_stats     = base["vol_stats"]
     sr_zone       = base["sr_zone"]
     compression   = base["compression"]
+    atr_1h        = base.get("atr_1h")
 
     # orderbook
     orderbook = await client.get_orderbook(symbol, depth=50)
@@ -251,6 +254,7 @@ async def _analyze_candidate(
                 "funding_rate": funding_rate,
                 "cfi_state":    cfi_state,
                 "price":        current_price,
+                "atr_1h":       atr_1h,
             }
 
     # devolve sempre o melhor resultado (filtro de threshold feito no ciclo principal)
@@ -388,6 +392,7 @@ async def run_scanner():
                     rsi_1h=result["rsi_1h"],
                     funding_rate=result["funding_rate"],
                     cfi_state=result["cfi_state"],
+                    atr_1h=result.get("atr_1h"),
                 )
 
                 if sent:
