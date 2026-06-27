@@ -3,6 +3,12 @@ notificacoes_scalp.py — Alertas Telegram para o canal Scalp (CSA v1.0)
 
 Formato distinto dos alertas CFI para evitar confusão.
 Envia para TELEGRAM_CHAT_SCALP.
+
+SL/TP calculados com base no ATR 1h:
+  SL  = 1.5× ATR (além do ruído normal)
+  TP1 = 0.75× ATR (rápido, alta probabilidade)
+  TP2 = 1.5× ATR (segundo objectivo, R/R 1:1)
+Fallback para percentagens fixas se ATR não disponível.
 """
 
 import logging
@@ -27,6 +33,7 @@ async def enviar_alerta_scalp(
     rsi_1h: Optional[float],
     funding_rate: Optional[float],
     cfi_state: Optional[str],
+    atr_1h: Optional[float] = None,
 ) -> bool:
     """
     Formata e envia alerta de scalp para o canal Telegram.
@@ -54,14 +61,14 @@ async def enviar_alerta_scalp(
 
     # ── Zona S/R ──────────────────────────────────────────────────────────────
     if sr_zone:
-        zona_min = sr_zone["price"] * 0.997
-        zona_max = sr_zone["price"] * 1.003
         tipo_zona = "Suporte" if sr_zone["type"] == "support" else "Resistência"
         linhas.append(
             f"Zona: ${sr_zone['price']:,.4f} ({tipo_zona} testado {sr_zone['touches']}x)"
         )
 
     linhas.append(f"Preço actual: ${price:,.4f}")
+    if atr_1h:
+        linhas.append(f"ATR 1h: ${atr_1h:,.4f}")
     linhas.append("")
 
     # ── Confluência ───────────────────────────────────────────────────────────
@@ -72,7 +79,7 @@ async def enviar_alerta_scalp(
 
     linhas.append("")
 
-    # ── Níveis ────────────────────────────────────────────────────────────────
+    # ── Níveis — calculados com ATR ───────────────────────────────────────────
     if sr_zone:
         entry_low  = sr_zone["price"] * 0.997
         entry_high = sr_zone["price"] * 1.003
@@ -80,13 +87,28 @@ async def enviar_alerta_scalp(
     else:
         linhas.append(f"Entry sugerido: ${price:,.4f} (preço actual)")
 
-    # SL e TP baseados no setup
-    if setup_type == "A":
-        sl_pct, tp1_pct, tp2_pct = 0.025, 0.015, 0.04
-    elif setup_type == "B":
-        sl_pct, tp1_pct, tp2_pct = 0.02, 0.012, 0.025
-    else:  # C ou None
-        sl_pct, tp1_pct, tp2_pct = 0.03, 0.02, 0.05
+    # SL e TP baseados no ATR 1h
+    # SL  = 1.5× ATR — além do ruído normal do token
+    # TP1 = 0.75× ATR — rápido, alta probabilidade de atingir em scalp
+    # TP2 = 1.5× ATR — segundo objectivo, R/R 1:1
+    # Fallback: percentagens fixas por setup se ATR não disponível
+    if atr_1h and atr_1h > 0:
+        sl_dist  = 1.5  * atr_1h
+        tp1_dist = 0.75 * atr_1h
+        tp2_dist = 1.5  * atr_1h
+        sl_pct   = sl_dist  / price
+        tp1_pct  = tp1_dist / price
+        tp2_pct  = tp2_dist / price
+        nivel_label = f"(1.5× ATR)"
+    else:
+        # fallback sem ATR — percentagens fixas por setup
+        if setup_type == "A":
+            sl_pct, tp1_pct, tp2_pct = 0.015, 0.010, 0.025
+        elif setup_type == "B":
+            sl_pct, tp1_pct, tp2_pct = 0.010, 0.008, 0.020
+        else:  # C ou None
+            sl_pct, tp1_pct, tp2_pct = 0.020, 0.015, 0.040
+        nivel_label = "(% fixo — ATR indisponível)"
 
     if direction == "LONG":
         sl  = price * (1 - sl_pct)
@@ -97,15 +119,15 @@ async def enviar_alerta_scalp(
         tp1 = price * (1 - tp1_pct)
         tp2 = price * (1 - tp2_pct)
 
-    rr_bruto = (tp1_pct / sl_pct) if sl_pct > 0 else 0
+    rr = tp1_pct / sl_pct if sl_pct > 0 else 0
 
     linhas.append(
-        f"SL sugerido: {'>' if direction == 'SHORT' else '<'} ${sl:,.4f}"
+        f"SL sugerido: {'>' if direction == 'SHORT' else '<'} ${sl:,.4f} {nivel_label}"
     )
     linhas.append(
-        f"TP1: ${tp1:,.4f} (+{tp1_pct*100:.1f}%)  |  TP2: ${tp2:,.4f} (+{tp2_pct*100:.1f}%)"
+        f"TP1: ${tp1:,.4f} (+{tp1_pct*100:.2f}%)  |  TP2: ${tp2:,.4f} (+{tp2_pct*100:.2f}%)"
     )
-    linhas.append(f"R/R estimado: {rr_bruto:.1f}:1")
+    linhas.append(f"R/R estimado: {rr:.2f}:1")
     linhas.append("")
 
     # ── Aviso ─────────────────────────────────────────────────────────────────
