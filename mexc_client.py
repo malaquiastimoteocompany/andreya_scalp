@@ -27,7 +27,6 @@ class MexcClient:
             async with self.session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
                 if r.status == 200:
                     data = await r.json(content_type=None)
-                    # resposta pode ser lista directa ou dict com envelope
                     if isinstance(data, list):
                         return {"success": True, "data": data}
                     if isinstance(data, dict):
@@ -54,16 +53,23 @@ class MexcClient:
         if not data:
             return []
         tickers = data.get("data", [])
-        # filtrar apenas pares USDT
         return [t for t in tickers if str(t.get("symbol", "")).endswith("_USDT")]
 
     async def get_ticker(self, symbol: str) -> Optional[dict]:
-        """Ticker individual."""
+        """
+        Ticker individual.
+        MEXC pode devolver 'data' como lista ou dict directamente
+        quando é pedido um símbolo específico.
+        """
         data = await self._get("/api/v1/contract/ticker", {"symbol": symbol})
         if not data:
             return None
         d = data.get("data", [])
-        return d[0] if d else None
+        if isinstance(d, dict):
+            return d
+        if isinstance(d, list):
+            return d[0] if d else None
+        return None
 
     # ── Candles ───────────────────────────────────────────────────────────────
 
@@ -81,14 +87,13 @@ class MexcClient:
             return []
 
         raw = data["data"]
-        # MEXC devolve: time, open, close, high, low, vol, turnover
         candles = []
-        times  = raw.get("time",     [])
-        opens  = raw.get("open",     [])
-        closes = raw.get("close",    [])
-        highs  = raw.get("high",     [])
-        lows   = raw.get("low",      [])
-        vols   = raw.get("vol",      [])
+        times  = raw.get("time",  [])
+        opens  = raw.get("open",  [])
+        closes = raw.get("close", [])
+        highs  = raw.get("high",  [])
+        lows   = raw.get("low",   [])
+        vols   = raw.get("vol",   [])
 
         for i in range(len(times)):
             try:
@@ -121,7 +126,6 @@ class MexcClient:
             return None
 
         d = data["data"]
-        # MEXC formato real: [[price, qty, order_count], ...]
         try:
             bids = [[float(row[0]), float(row[1])] for row in d.get("bids", [])]
             asks = [[float(row[0]), float(row[1])] for row in d.get("asks", [])]
@@ -135,7 +139,6 @@ class MexcClient:
     async def get_recent_trades(self, symbol: str, limit: int = 100) -> list[dict]:
         """
         Trades recentes — base para cálculo de delta e CVD.
-        MEXC devolve data como lista directa de trades.
         Devolve lista de dicts: price, vol, side (1=buy, -1=sell), time
         """
         data = await self._get(
@@ -146,7 +149,6 @@ class MexcClient:
             return []
 
         raw = data.get("data", [])
-        # MEXC devolve data como lista directa (não dict com resultList)
         if not isinstance(raw, list):
             raw = raw.get("resultList", []) if isinstance(raw, dict) else []
 
