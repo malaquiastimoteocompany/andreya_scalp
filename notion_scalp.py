@@ -39,7 +39,7 @@ async def log_alerta_csa(
     funding_rate: Optional[float],
     cfi_state: Optional[str],
     priority: bool,
-) -> bool:
+) -> Optional[str]:  # devolve page_id ou None
     """
     Regista alerta CSA enviado na base 'Alertas CSA' do Notion.
     """
@@ -87,6 +87,9 @@ async def log_alerta_csa(
         props["Zona S/R"] = {"number": sr_zone["price"]}
         props["Toques S/R"] = {"number": sr_zone["touches"]}
 
+    # campos de resultado — preenchidos pelo monitor_alertas.py
+    props["Resultado"] = {"select": {"name": "Pendente"}}
+
     payload = {
         "parent": {"database_id": NOTION_DB_ALERTAS_CSA},
         "properties": props,
@@ -100,13 +103,14 @@ async def log_alerta_csa(
             timeout=aiohttp.ClientTimeout(total=10),
         ) as r:
             if r.status in (200, 201):
-                return True
+                data = await r.json()
+                return data.get("id")  # devolve page_id para o monitor
             text = await r.text()
             logger.error(f"Notion alertas CSA erro {r.status}: {text[:200]}")
-            return False
+            return None
     except Exception as e:
         logger.error(f"Notion alertas CSA excepção: {e}")
-        return False
+        return None
 
 
 async def log_trade_scalp(
@@ -215,7 +219,20 @@ async def criar_bases_notion(session: aiohttp.ClientSession, page_raiz: str) -> 
             "Estado CFI":    {"select": {"options": [{"name": "E1"}, {"name": "E2"}, {"name": "E3"}]}},
             "Zona S/R":      {"number": {"format": "number"}},
             "Toques S/R":    {"number": {"format": "number"}},
-            "Data Alerta":   {"date": {}},
+            "Data Alerta":       {"date": {}},
+        # campos de resultado — preenchidos pelo monitor_alertas.py
+        "Resultado":         {"select": {"options": [
+            {"name": "Pendente",   "color": "gray"},
+            {"name": "TP Hit",     "color": "green"},
+            {"name": "SL Hit",     "color": "red"},
+            {"name": "TP Tardio",  "color": "blue"},
+            {"name": "SL Tardio",  "color": "orange"},
+            {"name": "Falhado",    "color": "brown"},
+        ]}},
+        "Preco Saida":       {"number": {"format": "number"}},
+        "PnL Alerta (%)":    {"number": {"format": "number"}},
+        "Duracao (min)":     {"number": {"format": "number"}},
+        "Data Resultado":    {"date": {}},
         }
     }
 
