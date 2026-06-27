@@ -23,24 +23,24 @@ from notion_scalp import _headers, NOTION_API
 logger = logging.getLogger(__name__)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
-JANELA_SCALP_SECS = 30 * 60    # 30 minutos — janela de scalp válido
+JANELA_SCALP_SECS = 30 * 60      # 30 minutos — janela de scalp válido
 JANELA_MAX_SECS   = 2 * 60 * 60  # 2 horas — janela máxima
-CHECK_INTERVAL    = 60          # verifica preço a cada 60 segundos
+CHECK_INTERVAL    = 60            # verifica preço a cada 60 segundos
 
 
 # ── Estrutura de alerta monitorizado ─────────────────────────────────────────
 
 @dataclass
 class AlertaMonitorizado:
-    symbol:       str
-    direction:    str           # "LONG" ou "SHORT"
-    price_entry:  float         # preço no momento do alerta
-    tp1:          float
-    sl:           float
-    score:        int
-    setup_type:   Optional[str]
+    symbol:         str
+    direction:      str            # "LONG" ou "SHORT"
+    price_entry:    float          # preço no momento do alerta
+    tp1:            float
+    sl:             float
+    score:          int
+    setup_type:     Optional[str]
     notion_page_id: Optional[str]  # ID da página Notion a actualizar
-    timestamp:    float = field(default_factory=time.time)
+    timestamp:      float = field(default_factory=time.time)
 
     @property
     def idade_secs(self) -> float:
@@ -186,7 +186,7 @@ async def _registar_resultado_notion(
 ) -> bool:
     """
     Actualiza a página do alerta no Notion com o resultado.
-    Se não tiver page_id, tenta encontrar pelo token + data.
+    Nomes de campos sem acentos — consistente com o schema de criação.
     """
     from config import NOTION_DB_ALERTAS_CSA
     if not NOTION_DB_ALERTAS_CSA:
@@ -198,48 +198,48 @@ async def _registar_resultado_notion(
     else:
         pnl_pct = (alerta.price_entry - preco_saida) / alerta.price_entry * 100
 
-    agora = datetime.now(timezone.utc).isoformat()
+    agora    = datetime.now(timezone.utc).isoformat()
     idade_min = round(alerta.idade_secs / 60, 1)
 
-    if alerta.notion_page_id:
-        # actualiza página existente
-        payload = {
-            "properties": {
-                "Resultado": {
-                    "select": {"name": resultado}
-                },
-                "Preço Saída": {
-                    "number": preco_saida
-                },
-                "PnL Alerta (%)": {
-                    "number": round(pnl_pct, 3)
-                },
-                "Duração (min)": {
-                    "number": idade_min
-                },
-                "Data Resultado": {
-                    "date": {"start": agora}
-                },
-            }
-        }
-        try:
-            async with session.patch(
-                f"{NOTION_API}/pages/{alerta.notion_page_id}",
-                json=payload,
-                headers=_headers(),
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as r:
-                if r.status == 200:
-                    logger.info(f"Notion actualizado: {alerta.symbol} → {resultado}")
-                    return True
-                text = await r.text()
-                logger.error(f"Notion update erro {r.status}: {text[:200]}")
-                return False
-        except Exception as e:
-            logger.error(f"Notion update excepção: {e}")
-            return False
-    else:
+    if not alerta.notion_page_id:
         logger.debug(f"Monitor: sem notion_page_id para {alerta.symbol} — resultado não registado")
+        return False
+
+    payload = {
+        "properties": {
+            "Resultado": {
+                "select": {"name": resultado}
+            },
+            "Preco Saida": {          # sem acento — igual ao schema de criação
+                "number": preco_saida
+            },
+            "PnL Alerta (%)": {
+                "number": round(pnl_pct, 3)
+            },
+            "Duracao (min)": {        # sem acento — igual ao schema de criação
+                "number": idade_min
+            },
+            "Data Resultado": {
+                "date": {"start": agora}
+            },
+        }
+    }
+
+    try:
+        async with session.patch(
+            f"{NOTION_API}/pages/{alerta.notion_page_id}",
+            json=payload,
+            headers=_headers(),
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as r:
+            if r.status == 200:
+                logger.info(f"Notion actualizado: {alerta.symbol} → {resultado} | PnL {pnl_pct:+.2f}%")
+                return True
+            text = await r.text()
+            logger.error(f"Notion update erro {r.status}: {text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"Notion update excepção: {e}")
         return False
 
 
