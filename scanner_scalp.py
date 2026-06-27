@@ -31,6 +31,7 @@ from signals_scalp import (
 from scoring_scalp import calcular_score
 from notificacoes_scalp import enviar_alerta_scalp, enviar_status_scalp
 from notion_scalp import log_alerta_csa
+from monitor_alertas import monitor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -269,6 +270,10 @@ async def run_scanner():
             f"Universo: ~500 tokens MEXC"
         )
 
+        # arrancar monitor de alertas em paralelo
+        asyncio.create_task(monitor.run(session))
+        logger.info("Monitor de alertas activo")
+
         cycle = 0
         while True:
             cycle += 1
@@ -373,7 +378,8 @@ async def run_scanner():
                 if sent:
                     alertas_enviados += 1
                     _alert_cooldown[symbol] = time.time()
-                    await log_alerta_csa(
+
+                    notion_page_id = await log_alerta_csa(
                         session=session,
                         symbol=symbol,
                         direction=direction,
@@ -385,6 +391,30 @@ async def run_scanner():
                         funding_rate=result["funding_rate"],
                         cfi_state=result["cfi_state"],
                         priority=priority,
+                    )
+
+                    # calcular TP1 e SL para monitorização
+                    _setup = result["scoring"]["setup_type"]
+                    _price = result["price"]
+                    _dir   = result["direction"]
+                    _sl_pct  = {"A": 0.025, "B": 0.02, "C": 0.03}.get(_setup, 0.025)
+                    _tp_pct  = {"A": 0.015, "B": 0.012, "C": 0.02}.get(_setup, 0.015)
+                    if _dir == "LONG":
+                        _tp1 = _price * (1 + _tp_pct)
+                        _sl  = _price * (1 - _sl_pct)
+                    else:
+                        _tp1 = _price * (1 - _tp_pct)
+                        _sl  = _price * (1 + _sl_pct)
+
+                    await monitor.registar(
+                        symbol=symbol,
+                        direction=_dir,
+                        price_entry=_price,
+                        tp1=_tp1,
+                        sl=_sl,
+                        score=score,
+                        setup_type=_setup,
+                        notion_page_id=notion_page_id,
                     )
 
                 if alertas_enviados >= 3:
