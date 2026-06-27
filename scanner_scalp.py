@@ -51,13 +51,13 @@ _cfi_states: dict[str, str] = {}
 
 def _load_cfi_states() -> dict[str, str]:
     import json, os, urllib.request, base64
-    
+
     github_token = os.environ.get("GITHUB_TOKEN", "")
     github_repo  = os.environ.get("GITHUB_REPO", "malaquiastimoteocompany/andreya_2.0")
-    
+
     if not github_token:
         return {}
-    
+
     url = f"https://api.github.com/repos/{github_repo}/contents/state.json"
     req = urllib.request.Request(url, headers={
         "Authorization": f"token {github_token}",
@@ -120,18 +120,18 @@ async def _prefilter_token(
     if len(candles_1h) < MIN_CANDLES_1H:
         return None
 
-    rsi_1h     = calc_rsi(candles_1h, period=14)
-    vol_stats  = calc_volume_stats(candles_1h, avg_periods=20)
-    sr_zones   = find_sr_zones(candles_1h[-100:])
-    sr_zone    = nearest_sr_zone(current_price, sr_zones)
+    rsi_1h      = calc_rsi(candles_1h, period=14)
+    vol_stats   = calc_volume_stats(candles_1h, avg_periods=20)
+    sr_zones    = find_sr_zones(candles_1h[-100:])
+    sr_zone     = nearest_sr_zone(current_price, sr_zones)
     compression = check_volatility_compression(candles_1h)
 
     # critérios de pré-selecção (pelo menos 1 deve passar)
-    has_sr         = sr_zone is not None
-    has_rsi_long   = rsi_1h is not None and rsi_1h < RSI_LONG_MAX
-    has_rsi_short  = rsi_1h is not None and rsi_1h > RSI_SHORT_MIN
+    has_sr          = sr_zone is not None
+    has_rsi_long    = rsi_1h is not None and rsi_1h < RSI_LONG_MAX
+    has_rsi_short   = rsi_1h is not None and rsi_1h > RSI_SHORT_MIN
     has_compression = compression.get("compressed", False)
-    has_vol_spike  = vol_stats.get("is_spike", False)
+    has_vol_spike   = vol_stats.get("is_spike", False)
 
     if not any([has_sr, has_rsi_long, has_rsi_short, has_compression, has_vol_spike]):
         return None
@@ -157,6 +157,8 @@ async def _analyze_candidate(
     """
     Análise completa de um candidato da Fase 1.
     Busca: orderbook, trades recentes, OI, funding rate.
+    Devolve sempre o melhor resultado (mesmo abaixo do threshold),
+    para permitir logging de diagnóstico no ciclo principal.
     """
     current_price = base["price"]
     candles_1h    = base["candles_1h"]
@@ -171,6 +173,7 @@ async def _analyze_candidate(
     walls = find_walls(orderbook, current_price) if orderbook else {
         "bid_wall": None, "ask_wall": None,
         "has_bid_wall": False, "has_ask_wall": False,
+        "depth_ratio": None,
     }
 
     # trades → CVD
@@ -250,9 +253,8 @@ async def _analyze_candidate(
                 "price":        current_price,
             }
 
-    if best_result and best_result["scoring"]["send"]:
-        return best_result
-    return None
+    # devolve sempre o melhor resultado (filtro de threshold feito no ciclo principal)
+    return best_result
 
 
 # ── Ciclo principal ───────────────────────────────────────────────────────────
@@ -343,6 +345,8 @@ async def run_scanner():
 
             # ── FASE 2 — Análise completa ─────────────────────────────────────
             alertas_enviados = 0
+            _debug_scores = []  # acumula scores para log de diagnóstico
+
             for symbol, ticker, base in candidatos:
                 try:
                     result = await _analyze_candidate(client, symbol, base)
@@ -353,24 +357,34 @@ async def run_scanner():
                 if result is None:
                     continue
 
+                score     = result["scoring"]["score"]
+                direction = result["direction"]
+                setup     = result["scoring"]["setup_type"]
+
+                # acumular para diagnóstico (sempre, independente do threshold)
+                _debug_scores.append((symbol, score, direction, setup,
+                                      result["scoring"]["components"]))
+
+                # filtro de threshold
+                if not result["scoring"]["send"]:
+                    continue
+
                 # validação R/R mínimo por setup (manual CSA v1.0)
-                setup_type = result["scoring"]["setup_type"]
-                rr_min = MIN_RR.get(setup_type, 1.5)
-                sl_pct = {"A": 0.025, "B": 0.02, "C": 0.03}.get(setup_type, 0.025)
-                tp_pct = {"A": 0.015, "B": 0.012, "C": 0.02}.get(setup_type, 0.015)
+                setup_type = setup
+                rr_min  = MIN_RR.get(setup_type, 1.5)
+                sl_pct  = {"A": 0.025, "B": 0.02, "C": 0.03}.get(setup_type, 0.025)
+                tp_pct  = {"A": 0.015, "B": 0.012, "C": 0.02}.get(setup_type, 0.015)
                 rr_actual = tp_pct / sl_pct if sl_pct > 0 else 0
                 if rr_actual < rr_min:
                     logger.debug(f"R/R {rr_actual:.1f} < {rr_min} para {symbol} — skip")
                     continue
 
-                score    = result["scoring"]["score"]
                 priority = result["scoring"]["priority"]
-                direction = result["direction"]
 
                 logger.info(
                     f"🎯 {symbol} {direction} | Score: {score}/10"
                     f"{' 🔥' if priority else ''}"
-                    f" | Setup {result['scoring']['setup_type'] or '?'}"
+                    f" | Setup {setup or '?'}"
                 )
 
                 sent = await enviar_alerta_scalp(
@@ -395,7 +409,7 @@ async def run_scanner():
                         direction=direction,
                         price=result["price"],
                         score=score,
-                        setup_type=result["scoring"]["setup_type"],
+                        setup_type=setup_type,
                         sr_zone=result["sr_zone"],
                         rsi_1h=result["rsi_1h"],
                         funding_rate=result["funding_rate"],
@@ -404,11 +418,10 @@ async def run_scanner():
                     )
 
                     # calcular TP1 e SL para monitorização
-                    _setup = result["scoring"]["setup_type"]
-                    _price = result["price"]
-                    _dir   = result["direction"]
-                    _sl_pct  = {"A": 0.025, "B": 0.02, "C": 0.03}.get(_setup, 0.025)
-                    _tp_pct  = {"A": 0.015, "B": 0.012, "C": 0.02}.get(_setup, 0.015)
+                    _price  = result["price"]
+                    _dir    = result["direction"]
+                    _sl_pct = {"A": 0.025, "B": 0.02, "C": 0.03}.get(setup_type, 0.025)
+                    _tp_pct = {"A": 0.015, "B": 0.012, "C": 0.02}.get(setup_type, 0.015)
                     if _dir == "LONG":
                         _tp1 = _price * (1 + _tp_pct)
                         _sl  = _price * (1 - _sl_pct)
@@ -423,13 +436,27 @@ async def run_scanner():
                         tp1=_tp1,
                         sl=_sl,
                         score=score,
-                        setup_type=_setup,
+                        setup_type=setup_type,
                         notion_page_id=notion_page_id,
                     )
 
                 if alertas_enviados >= 3:
                     logger.info("Limite de 3 alertas por ciclo atingido")
                     break
+
+            # ── Log de diagnóstico — top 5 scores do ciclo ───────────────────
+            if _debug_scores:
+                _debug_scores.sort(key=lambda x: x[1], reverse=True)
+                logger.info(f"── Top scores ciclo #{cycle} ──")
+                for sym, sc, dr, st, comps in _debug_scores[:5]:
+                    pts = " | ".join(
+                        f"{k}={v['points']}/{v['max']}"
+                        for k, v in comps.items()
+                        if v["points"] > 0
+                    )
+                    logger.info(f"  {sym} {dr} score={sc}/10 setup={st or '?'} [{pts or 'sem pontos'}]")
+            else:
+                logger.info(f"── Ciclo #{cycle}: nenhum resultado na Fase 2 ──")
 
             # ── Sumário ───────────────────────────────────────────────────────
             elapsed = time.time() - t_start
