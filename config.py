@@ -9,14 +9,34 @@ MEXC_BASE = "https://contract.mexc.com"
 
 # ── Notion ────────────────────────────────────────────────────────────────────
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
-NOTION_DB_ALERTAS_CSA  = os.environ.get("NOTION_DB_ALERTAS_CSA", "")   # preencher após criar
-NOTION_DB_TRADES_SCALP = os.environ.get("NOTION_DB_TRADES_SCALP", "")  # preencher após criar
+NOTION_DB_ALERTAS_CSA  = os.environ.get("NOTION_DB_ALERTAS_CSA", "")
+NOTION_DB_TRADES_SCALP = os.environ.get("NOTION_DB_TRADES_SCALP", "")
 
 # ── Filtros de liquidez para scalp ───────────────────────────────────────────
 MIN_VOLUME_24H    = 5_000_000   # USD
 MIN_OI            = 500_000     # USD
 MAX_SPREAD_PCT    = 0.001       # 0.1%
 MIN_CANDLES_1H    = 168         # 7 dias de histórico
+
+# ── Blacklist — tokens sintéticos / índices / commodities ────────────────────
+# Não são crypto — excluídos do universo CSA
+SYMBOL_BLACKLIST = {
+    "US30_USDT", "SPX500_USDT", "NAS100_USDT", "UK100_USDT",
+    "HK50_USDT", "JP225_USDT", "DE40_USDT", "FR40_USDT",
+    "XAU_USDT", "XAUT_USDT", "SILVER_USDT", "GOLD_USDT",
+    "USOIL_USDT", "UKOIL_USDT", "NATGAS_USDT",
+    "ZINC_USDT", "NICKEL_USDT", "ALUMINUM_USDT", "COPPER_USDT",
+    "SNDKSTOCK_USDT", "SPCXSTOCK_USDT", "MUSTOCK_USDT",
+    "SKHYNIXSTOCK_USDT", "LLYSTOCK_USDT", "PAXG_USDT",
+}
+
+# ── R/R mínimo por setup (do manual CSA v1.0) ─────────────────────────────────
+MIN_RR = {
+    "A": 1.5,
+    "B": 2.0,
+    "C": 2.5,
+    None: 1.5,
+}
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 SCORE_MIN_ENVIO   = 6           # abaixo → não envia
@@ -54,7 +74,7 @@ OI_HISTORY_MINS   = 15          # janela de monitorização
 
 # ── Scanner ───────────────────────────────────────────────────────────────────
 SCAN_INTERVAL_SEC = 150         # 2.5 minutos entre ciclos completos
-REQUEST_DELAY     = 0.08        # delay entre requests MEXC (ms → s)
+REQUEST_DELAY     = 0.08        # delay entre requests MEXC
 MAX_TOKENS_SCALP  = 500         # universo máximo
 
 # ── Alerta validade ───────────────────────────────────────────────────────────
