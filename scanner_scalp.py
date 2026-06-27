@@ -20,7 +20,7 @@ from config import (
     SCAN_INTERVAL_SEC, REQUEST_DELAY,
     MIN_VOLUME_24H, MIN_OI, MAX_SPREAD_PCT, MIN_CANDLES_1H,
     OI_HISTORY_MINS, RSI_LONG_MAX, RSI_SHORT_MIN,
-    SR_ZONE_TOLERANCE,
+    SR_ZONE_TOLERANCE, SYMBOL_BLACKLIST, MIN_RR,
 )
 from mexc_client import MexcClient
 from signals_scalp import (
@@ -287,8 +287,12 @@ async def run_scanner():
                 await asyncio.sleep(30)
                 continue
 
-            # ── Filtro liquidez ───────────────────────────────────────────────
-            elegíveis = [t for t in tickers if _passes_liquidity_filter(t)]
+            # ── Filtro liquidez + blacklist ───────────────────────────────────
+            elegíveis = [
+                t for t in tickers
+                if _passes_liquidity_filter(t)
+                and t.get("symbol", "") not in SYMBOL_BLACKLIST
+            ]
             logger.info(f"Elegíveis: {len(elegíveis)}/{len(tickers)}")
 
             # ── Priorização ───────────────────────────────────────────────────
@@ -332,6 +336,16 @@ async def run_scanner():
                     continue
 
                 if result is None:
+                    continue
+
+                # validação R/R mínimo por setup (manual CSA v1.0)
+                setup_type = result["scoring"]["setup_type"]
+                rr_min = MIN_RR.get(setup_type, 1.5)
+                sl_pct = {"A": 0.025, "B": 0.02, "C": 0.03}.get(setup_type, 0.025)
+                tp_pct = {"A": 0.015, "B": 0.012, "C": 0.02}.get(setup_type, 0.015)
+                rr_actual = tp_pct / sl_pct if sl_pct > 0 else 0
+                if rr_actual < rr_min:
+                    logger.debug(f"R/R {rr_actual:.1f} < {rr_min} para {symbol} — skip")
                     continue
 
                 score    = result["scoring"]["score"]
