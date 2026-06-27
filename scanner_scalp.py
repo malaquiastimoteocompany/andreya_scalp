@@ -313,6 +313,7 @@ async def run_scanner():
                 t for t in tickers
                 if _passes_liquidity_filter(t)
                 and t.get("symbol", "") not in SYMBOL_BLACKLIST
+                and not t.get("symbol", "").endswith("STOCK_USDT")
             ]
             logger.info(f"Elegíveis: {len(elegíveis)}/{len(tickers)}")
 
