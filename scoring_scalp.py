@@ -4,7 +4,7 @@ scoring_scalp.py — Motor de scoring CSA v1.0
 Score 0-10 por componente:
   +2 Zona S/R estrutural clara (>= 2 toques 1h)
   +1 RSI em zona extrema no 1h
-  +2 Liquidez acumulada no heatmap (cluster OI/bid wall como proxy)
+  +2 Concentração de liquidez na zona ±2% (proxy heatmap via depth_ratio)
   +1 Bid/ask wall no order book na zona
   +1 CVD mostrando absorção ou divergência
   +1 Volume spike ou compressão confirmada
@@ -29,7 +29,7 @@ def calcular_score(
     sr_zone: Optional[dict],  # resultado de nearest_sr_zone
     rsi_1h: Optional[float],
     rsi_5m: Optional[float],
-    walls: dict,              # resultado de find_walls
+    walls: dict,              # resultado de find_walls (inclui depth_ratio)
     cvd: dict,                # resultado de calc_cvd
     vol_stats: dict,          # resultado de calc_volume_stats
     oi_cascade: dict,         # resultado de detect_oi_cascade
@@ -83,33 +83,36 @@ def calcular_score(
         "detail": rsi_detail,
     }
 
-    # ── Componente 3: Profundidade de liquidez na zona (+2) ──────────────────────
-# Proxy de heatmap: concentração de ordens no order book numa banda de ±2%
-# +1 se liquidez na zona > 2× a liquidez média do book
-# +2 se liquidez na zona > 4× a liquidez média do book (cluster denso)
-cluster_pts = 0
-cluster_ok = False
-cluster_detail = "Sem concentração de liquidez na zona"
+    # ── Componente 3: Concentração de liquidez na zona (+2) ───────────────────
+    # Proxy de heatmap: mede a concentração de ordens numa banda ±2% do preço
+    # vs o que seria esperado se o book fosse uniforme.
+    # depth_ratio >= 2.0 → cluster moderado (+1)
+    # depth_ratio >= 4.0 → cluster denso (+2, equivalente a heatmap brilhante)
+    # Independente do Comp4 (wall): um token pode ter liquidez concentrada
+    # sem ter uma wall pontual identificável, e vice-versa.
+    cluster_pts = 0
+    cluster_ok = False
+    cluster_detail = "Sem concentração de liquidez na zona"
 
-depth_ratio = walls.get("depth_ratio")  # novo campo de find_walls
-if depth_ratio is not None:
-    if depth_ratio >= 4.0:
-        cluster_pts = 2
-        cluster_ok = True
-        cluster_detail = f"Cluster denso — liquidez {depth_ratio:.1f}× média do book"
-    elif depth_ratio >= 2.0:
-        cluster_pts = 1
-        cluster_ok = True
-        cluster_detail = f"Cluster moderado — liquidez {depth_ratio:.1f}× média do book"
+    depth_ratio = walls.get("depth_ratio")
+    if depth_ratio is not None:
+        if depth_ratio >= 4.0:
+            cluster_pts = 2
+            cluster_ok = True
+            cluster_detail = f"Cluster denso — liquidez {depth_ratio:.1f}× concentrada na zona ±2%"
+        elif depth_ratio >= 2.0:
+            cluster_pts = 1
+            cluster_ok = True
+            cluster_detail = f"Cluster moderado — liquidez {depth_ratio:.1f}× concentrada na zona ±2%"
 
-score += cluster_pts
-components["cluster"] = {
-    "label":  "Concentração de liquidez na zona",
-    "points": cluster_pts,
-    "max":    2,
-    "active": cluster_ok,
-    "detail": cluster_detail,
-} 
+    score += cluster_pts
+    components["cluster"] = {
+        "label":  "Concentração de liquidez na zona (proxy heatmap)",
+        "points": cluster_pts,
+        "max":    2,
+        "active": cluster_ok,
+        "detail": cluster_detail,
+    }
 
     # ── Componente 4: Bid/ask wall no order book (+1) ─────────────────────────
     wall_ok = False
@@ -166,7 +169,6 @@ components["cluster"] = {
     liq_ok = False
     liq_detail = "Sem liquidações relevantes recentes"
     if oi_cascade.get("cascade"):
-        # cascade detectado = liquidações ocorreram
         if direction == "LONG" and oi_cascade.get("direction") == "LONG":
             liq_ok = True
             liq_detail = f"Cascade longs: OI -{oi_cascade['oi_drop_pct']:.1f}% (bounce long esperado)"
