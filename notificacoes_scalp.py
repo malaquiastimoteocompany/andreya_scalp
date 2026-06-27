@@ -194,3 +194,4 @@ async def enviar_mensagem_raw(
 ) -> bool:
     """Exposto para uso externo (ex: comandos bot)."""
     return await _enviar_mensagem(session, texto)
+
