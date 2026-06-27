@@ -26,11 +26,16 @@ class MexcClient:
         try:
             async with self.session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=8)) as r:
                 if r.status == 200:
-                    data = await r.json()
-                    if data.get("success") is False:
-                        logger.debug(f"MEXC erro {path}: {data.get('message')}")
-                        return None
-                    return data
+                    data = await r.json(content_type=None)
+                    # resposta pode ser lista directa ou dict com envelope
+                    if isinstance(data, list):
+                        return {"success": True, "data": data}
+                    if isinstance(data, dict):
+                        if data.get("success") is False:
+                            logger.debug(f"MEXC erro {path}: {data.get('message')}")
+                            return None
+                        return data
+                    return None
                 else:
                     logger.debug(f"MEXC HTTP {r.status} {path}")
                     return None
@@ -105,6 +110,7 @@ class MexcClient:
     async def get_orderbook(self, symbol: str, depth: int = 100) -> Optional[dict]:
         """
         Order book até `depth` níveis.
+        MEXC devolve asks/bids como lista de triplos [price, qty, count].
         Devolve dict com keys 'bids' e 'asks', cada um lista de [price, qty].
         """
         data = await self._get(
@@ -115,8 +121,12 @@ class MexcClient:
             return None
 
         d = data["data"]
-        bids = [[float(p), float(q)] for p, q in zip(d.get("bids", {}).get("p", []), d.get("bids", {}).get("v", []))]
-        asks = [[float(p), float(q)] for p, q in zip(d.get("asks", {}).get("p", []), d.get("asks", {}).get("v", []))]
+        # MEXC formato real: [[price, qty, order_count], ...]
+        try:
+            bids = [[float(row[0]), float(row[1])] for row in d.get("bids", [])]
+            asks = [[float(row[0]), float(row[1])] for row in d.get("asks", [])]
+        except (IndexError, ValueError, TypeError):
+            return None
 
         return {"bids": bids, "asks": asks}
 
@@ -125,17 +135,23 @@ class MexcClient:
     async def get_recent_trades(self, symbol: str, limit: int = 100) -> list[dict]:
         """
         Trades recentes — base para cálculo de delta e CVD.
+        MEXC devolve data como lista directa de trades.
         Devolve lista de dicts: price, vol, side (1=buy, -1=sell), time
         """
         data = await self._get(
             f"/api/v1/contract/deals/{symbol}",
             {"limit": limit}
         )
-        if not data or not data.get("data"):
+        if not data:
             return []
 
+        raw = data.get("data", [])
+        # MEXC devolve data como lista directa (não dict com resultList)
+        if not isinstance(raw, list):
+            raw = raw.get("resultList", []) if isinstance(raw, dict) else []
+
         trades = []
-        for t in data["data"].get("resultList", []):
+        for t in raw:
             try:
                 trades.append({
                     "price": float(t["p"]),
