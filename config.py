@@ -18,14 +18,21 @@ MIN_OI            = 500_000     # USD
 MAX_SPREAD_PCT    = 0.001       # 0.1%
 MIN_CANDLES_1H    = 168         # 7 dias de histórico
 
-# ── Blacklist — tokens sintéticos / índices / commodities ────────────────────
-# Não são crypto — excluídos do universo CSA
+# ── Blacklist — tokens excluídos do universo CSA ─────────────────────────────
+# Sintéticos / índices / commodities — não são crypto
+# BTC, ETH, SOL — mercados demasiado eficientes para scalp de minutos;
+#   price discovery quase instantâneo, sem edge estrutural neste sistema
 SYMBOL_BLACKLIST = {
+    # Mega caps — eficientes demais para scalp
+    "BTC_USDT", "ETH_USDT", "SOL_USDT", "DOGE_USDT", "ADA_USDT",
+    # Sintéticos / índices
     "US30_USDT", "SPX500_USDT", "NAS100_USDT", "UK100_USDT",
     "HK50_USDT", "JP225_USDT", "DE40_USDT", "FR40_USDT",
+    # Commodities
     "XAU_USDT", "XAUT_USDT", "SILVER_USDT", "GOLD_USDT",
     "USOIL_USDT", "UKOIL_USDT", "NATGAS_USDT",
     "ZINC_USDT", "NICKEL_USDT", "ALUMINUM_USDT", "COPPER_USDT",
+    # Outros sintéticos
     "SNDKSTOCK_USDT", "SPCXSTOCK_USDT", "MUSTOCK_USDT",
     "SKHYNIXSTOCK_USDT", "LLYSTOCK_USDT", "PAXG_USDT",
 }
