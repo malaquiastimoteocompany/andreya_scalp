@@ -8,6 +8,7 @@ Sinais produzidos:
   - Volume médio e relativo
   - Delta e CVD a partir de trades recentes
   - Bid/Ask walls do order book
+  - Depth ratio — concentração de liquidez na zona ±2% (proxy heatmap)
 """
 
 import math
@@ -230,18 +231,23 @@ def calc_cvd(trades: list[dict]) -> dict:
     }
 
 
-# ── Order Book — Bid/Ask Walls ────────────────────────────────────────────────
+# ── Order Book — Bid/Ask Walls + Depth Ratio ─────────────────────────────────
 
 def find_walls(orderbook: dict, current_price: float, price_mult: float = None) -> dict:
     """
     Detecta bid e ask walls significativas no order book.
     Uma wall é um cluster de ordens > WALL_MIN_USD numa zona de WALL_ZONE_PCT do preço.
+
+    Também calcula depth_ratio: concentração de liquidez na zona ±2% vs média do book.
+    depth_ratio >= 2.0 → cluster moderado (+1 no scoring)
+    depth_ratio >= 4.0 → cluster denso (+2 no scoring, proxy de heatmap)
     """
     result = {
-        "bid_wall": None,  # {price, usd_value, distance_pct}
-        "ask_wall": None,
+        "bid_wall":    None,  # {price, usd_value, distance_pct}
+        "ask_wall":    None,
         "has_bid_wall": False,
         "has_ask_wall": False,
+        "depth_ratio":  None,
     }
 
     if not orderbook:
@@ -257,7 +263,6 @@ def find_walls(orderbook: dict, current_price: float, price_mult: float = None) 
         # agrupa por zona de preço
         clusters = defaultdict(float)
         for price, qty in levels:
-            # round ao nearest zone_pct
             zone_key = round(price / (current_price * zone_pct)) * (current_price * zone_pct)
             clusters[zone_key] += price * qty  # USD value
 
@@ -281,12 +286,45 @@ def find_walls(orderbook: dict, current_price: float, price_mult: float = None) 
     ask_wall = cluster_side(orderbook.get("asks", []), is_bid=False)
 
     if bid_wall:
-        result["bid_wall"]      = bid_wall
-        result["has_bid_wall"]  = True
+        result["bid_wall"]     = bid_wall
+        result["has_bid_wall"] = True
     if ask_wall:
-        result["ask_wall"]      = ask_wall
-        result["has_ask_wall"]  = True
+        result["ask_wall"]     = ask_wall
+        result["has_ask_wall"] = True
 
+    # ── Depth ratio — proxy de heatmap ───────────────────────────────────────
+    # Mede a concentração de liquidez numa banda ±2% em torno do preço actual
+    # vs o que seria esperado se o book fosse uniforme.
+    # Ratio >= 2.0: liquidez 2× concentrada → cluster moderado
+    # Ratio >= 4.0: liquidez 4× concentrada → cluster denso (equivalente a heatmap brilhante)
+    try:
+        zone_band = 0.02  # ±2% do preço actual
+
+        total_bids_usd = sum(p * q for p, q in orderbook.get("bids", []))
+        total_asks_usd = sum(p * q for p, q in orderbook.get("asks", []))
+        total_book_usd = total_bids_usd + total_asks_usd
+
+        zone_bids_usd = sum(
+            p * q for p, q in orderbook.get("bids", [])
+            if abs(p - current_price) / current_price <= zone_band
+        )
+        zone_asks_usd = sum(
+            p * q for p, q in orderbook.get("asks", [])
+            if abs(p - current_price) / current_price <= zone_band
+        )
+        zone_usd = zone_bids_usd + zone_asks_usd
+
+        if total_book_usd > 0:
+            zone_fraction     = zone_usd / total_book_usd
+            expected_fraction = zone_band * 2  # 0.04 — fracção esperada se book uniforme
+            depth_ratio = round(zone_fraction / expected_fraction, 2) if expected_fraction > 0 else None
+        else:
+            depth_ratio = None
+
+    except Exception:
+        depth_ratio = None
+
+    result["depth_ratio"] = depth_ratio
     return result
 
 
