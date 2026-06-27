@@ -369,12 +369,12 @@ async def run_scanner():
                 _debug_scores.append((symbol, score, direction, setup,
                                       result["scoring"]["components"]))
 
-                # filtro de threshold
+                # filtro de threshold de registo (>=6)
                 if not result["scoring"]["send"]:
                     continue
 
                 setup_type = setup
-                priority = result["scoring"]["priority"]
+                priority   = result["scoring"]["priority"]  # score >= 8
 
                 logger.info(
                     f"🎯 {symbol} {direction} | Score: {score}/10"
@@ -382,59 +382,73 @@ async def run_scanner():
                     f" | Setup {setup or '?'}"
                 )
 
-                sent = await enviar_alerta_scalp(
-                    session=session,
-                    symbol=symbol,
-                    direction=direction,
-                    price=result["price"],
-                    scoring=result["scoring"],
-                    sr_zone=result["sr_zone"],
-                    rsi_1h=result["rsi_1h"],
-                    funding_rate=result["funding_rate"],
-                    cfi_state=result["cfi_state"],
-                    atr_1h=result.get("atr_1h"),
-                )
-
-                if sent:
-                    alertas_enviados += 1
-                    _alert_cooldown[symbol] = time.time()
-
-                    notion_page_id = await log_alerta_csa(
+                # notificação Telegram só para score >= 8 (priority)
+                # score 6-7: regista Notion e monitor mas não notifica
+                if priority:
+                    sent = await enviar_alerta_scalp(
                         session=session,
                         symbol=symbol,
                         direction=direction,
                         price=result["price"],
-                        score=score,
-                        setup_type=setup_type,
+                        scoring=result["scoring"],
                         sr_zone=result["sr_zone"],
                         rsi_1h=result["rsi_1h"],
                         funding_rate=result["funding_rate"],
                         cfi_state=result["cfi_state"],
-                        priority=priority,
+                        atr_1h=result.get("atr_1h"),
                     )
+                    if sent:
+                        alertas_enviados += 1
+                else:
+                    sent = False
+                    logger.info(f"  ↳ Score {score}/10 — registo Notion sem notificação Telegram")
 
-                    # calcular TP1 e SL para monitorização
-                    _price  = result["price"]
-                    _dir    = result["direction"]
-                    _sl_pct = {"A": 0.025, "B": 0.02, "C": 0.03}.get(setup_type, 0.025)
-                    _tp_pct = {"A": 0.015, "B": 0.012, "C": 0.02}.get(setup_type, 0.015)
+                # regista Notion e monitor para todos os scores >= 6
+                _alert_cooldown[symbol] = time.time()
+
+                # calcular TP1 e SL com ATR para o monitor
+                _price = result["price"]
+                _dir   = result["direction"]
+                _atr   = result.get("atr_1h")
+                if _atr and _atr > 0:
                     if _dir == "LONG":
-                        _tp1 = _price * (1 + _tp_pct)
-                        _sl  = _price * (1 - _sl_pct)
+                        _tp1 = _price + 0.75 * _atr
+                        _sl  = _price - 1.5  * _atr
                     else:
-                        _tp1 = _price * (1 - _tp_pct)
-                        _sl  = _price * (1 + _sl_pct)
+                        _tp1 = _price - 0.75 * _atr
+                        _sl  = _price + 1.5  * _atr
+                else:
+                    if _dir == "LONG":
+                        _tp1 = _price * 1.010
+                        _sl  = _price * 0.985
+                    else:
+                        _tp1 = _price * 0.990
+                        _sl  = _price * 1.015
 
-                    await monitor.registar(
-                        symbol=symbol,
-                        direction=_dir,
-                        price_entry=_price,
-                        tp1=_tp1,
-                        sl=_sl,
-                        score=score,
-                        setup_type=setup_type,
-                        notion_page_id=notion_page_id,
-                    )
+                notion_page_id = await log_alerta_csa(
+                    session=session,
+                    symbol=symbol,
+                    direction=direction,
+                    price=result["price"],
+                    score=score,
+                    setup_type=setup_type,
+                    sr_zone=result["sr_zone"],
+                    rsi_1h=result["rsi_1h"],
+                    funding_rate=result["funding_rate"],
+                    cfi_state=result["cfi_state"],
+                    priority=priority,
+                )
+
+                await monitor.registar(
+                    symbol=symbol,
+                    direction=_dir,
+                    price_entry=_price,
+                    tp1=_tp1,
+                    sl=_sl,
+                    score=score,
+                    setup_type=setup_type,
+                    notion_page_id=notion_page_id,
+                )
 
                 if alertas_enviados >= 3:
                     logger.info("Limite de 3 alertas por ciclo atingido")
