@@ -83,35 +83,33 @@ def calcular_score(
         "detail": rsi_detail,
     }
 
-    # ── Componente 3: Cluster de liquidez (+2) ────────────────────────────────
-    # Proxy: bid wall para LONG (onde stops de shorts acumulados), ask wall para SHORT
-    # Alternativa: OI cascade detectado (confirma liquidez acumulada foi varrida)
-    cluster_ok = False
-    cluster_detail = "Sem cluster identificado"
-    if direction == "LONG":
-        if walls.get("has_bid_wall") and walls["bid_wall"]["distance_pct"] < 3.0:
-            cluster_ok = True
-            cluster_detail = f"Cluster bid ${walls['bid_wall']['usd_value']:,.0f} a {walls['bid_wall']['distance_pct']}% abaixo"
-        elif oi_cascade.get("cascade") and oi_cascade.get("direction") == "LONG":
-            cluster_ok = True
-            cluster_detail = f"Cluster limpado — OI caiu {oi_cascade['oi_drop_pct']}%"
-    else:  # SHORT
-        if walls.get("has_ask_wall") and walls["ask_wall"]["distance_pct"] < 3.0:
-            cluster_ok = True
-            cluster_detail = f"Cluster ask ${walls['ask_wall']['usd_value']:,.0f} a {walls['ask_wall']['distance_pct']}% acima"
-        elif oi_cascade.get("cascade") and oi_cascade.get("direction") == "SHORT":
-            cluster_ok = True
-            cluster_detail = f"Cluster limpado — OI subiu {oi_cascade['oi_drop_pct']}%"
+    # ── Componente 3: Profundidade de liquidez na zona (+2) ──────────────────────
+# Proxy de heatmap: concentração de ordens no order book numa banda de ±2%
+# +1 se liquidez na zona > 2× a liquidez média do book
+# +2 se liquidez na zona > 4× a liquidez média do book (cluster denso)
+cluster_pts = 0
+cluster_ok = False
+cluster_detail = "Sem concentração de liquidez na zona"
 
-    cluster_pts = 2 if cluster_ok else 0
-    score += cluster_pts
-    components["cluster"] = {
-        "label":  "Cluster de liquidez na zona",
-        "points": cluster_pts,
-        "max":    2,
-        "active": cluster_ok,
-        "detail": cluster_detail,
-    }
+depth_ratio = walls.get("depth_ratio")  # novo campo de find_walls
+if depth_ratio is not None:
+    if depth_ratio >= 4.0:
+        cluster_pts = 2
+        cluster_ok = True
+        cluster_detail = f"Cluster denso — liquidez {depth_ratio:.1f}× média do book"
+    elif depth_ratio >= 2.0:
+        cluster_pts = 1
+        cluster_ok = True
+        cluster_detail = f"Cluster moderado — liquidez {depth_ratio:.1f}× média do book"
+
+score += cluster_pts
+components["cluster"] = {
+    "label":  "Concentração de liquidez na zona",
+    "points": cluster_pts,
+    "max":    2,
+    "active": cluster_ok,
+    "detail": cluster_detail,
+} 
 
     # ── Componente 4: Bid/ask wall no order book (+1) ─────────────────────────
     wall_ok = False
