@@ -50,20 +50,30 @@ _cfi_states: dict[str, str] = {}
 
 
 def _load_cfi_states() -> dict[str, str]:
-    """Carrega estados CFI do state.json se disponível."""
-    import json, os
-    path = os.path.join(os.path.dirname(__file__), "..", "andreya_2.0", "state.json")
-    if not os.path.exists(path):
+    import json, os, urllib.request, base64
+    
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+    github_repo  = os.environ.get("GITHUB_REPO", "malaquiastimoteocompany/andreya_2.0")
+    
+    if not github_token:
         return {}
+    
+    url = f"https://api.github.com/repos/{github_repo}/contents/state.json"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "andreya-scalp",
+    })
     try:
-        with open(path) as f:
-            data = json.load(f)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp    = json.loads(r.read())
+            content = base64.b64decode(resp["content"]).decode()
+            data    = json.loads(content)
         states = {}
-        for token_data in data.get("tokens", {}).values():
-            sym   = token_data.get("symbol", "")
-            state = token_data.get("state", "E1")
-            if sym:
-                states[sym] = state
+        for sym, campos in data.items():
+            estado = campos.get("estado", 1)
+            states[sym] = f"E{estado}"
+        logger.info(f"Estados CFI carregados: {len(states)} tokens")
         return states
     except Exception as e:
         logger.debug(f"Não foi possível carregar state.json CFI: {e}")
