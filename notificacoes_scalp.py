@@ -89,13 +89,13 @@ async def enviar_alerta_scalp(
 
     # SL e TP baseados no ATR 1h
     # SL  = 1.5× ATR — além do ruído normal do token
-    # TP1 = 0.75× ATR — rápido, alta probabilidade de atingir em scalp
-    # TP2 = 1.5× ATR — segundo objectivo, R/R 1:1
+    # TP1 = 0.4× ATR — muito próximo, máxima probabilidade de atingir em scalp de minutos
+    # TP2 = 1.0× ATR — segundo objectivo
     # Fallback: percentagens fixas por setup se ATR não disponível
     if atr_1h and atr_1h > 0:
         sl_dist  = 1.5  * atr_1h
-        tp1_dist = 0.75 * atr_1h
-        tp2_dist = 1.5  * atr_1h
+        tp1_dist = 0.4 * atr_1h
+        tp2_dist = 1.0 * atr_1h
         sl_pct   = sl_dist  / price
         tp1_pct  = tp1_dist / price
         tp2_pct  = tp2_dist / price
@@ -194,4 +194,3 @@ async def enviar_mensagem_raw(
 ) -> bool:
     """Exposto para uso externo (ex: comandos bot)."""
     return await _enviar_mensagem(session, texto)
-
