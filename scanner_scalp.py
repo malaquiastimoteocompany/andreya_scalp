@@ -413,11 +413,11 @@ async def run_scanner():
                 _atr   = result.get("atr_1h")
                 if _atr and _atr > 0:
                     if _dir == "LONG":
-                        _tp1 = _price + 0.75 * _atr
-                        _sl  = _price - 1.5  * _atr
+                        _tp1 = _price + 0.4 * _atr
+                        _sl  = _price - 1.5 * _atr
                     else:
-                        _tp1 = _price - 0.75 * _atr
-                        _sl  = _price + 1.5  * _atr
+                        _tp1 = _price - 0.4 * _atr
+                        _sl  = _price + 1.5 * _atr
                 else:
                     if _dir == "LONG":
                         _tp1 = _price * 1.010
