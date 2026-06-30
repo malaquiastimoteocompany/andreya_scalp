@@ -338,6 +338,10 @@ async def run_scanner():
                     continue
                 if time.time() - _alert_cooldown.get(symbol, 0) < ALERT_COOLDOWN_SECS:
                     continue
+                # não gerar novo alerta se este token já tem um sinal "aberto"
+                # (ainda não atingiu TP, SL, nem expirou as 2h)
+                if await monitor.esta_activo(symbol):
+                    continue
                 try:
                     base = await _prefilter_token(client, symbol, ticker)
                     if base:
