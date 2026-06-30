@@ -87,6 +87,16 @@ class MonitorAlertas:
         self._alertas: list[AlertaMonitorizado] = []
         self._lock = asyncio.Lock()
 
+    async def esta_activo(self, symbol: str) -> bool:
+        """
+        True se já existe um alerta deste symbol em monitorização
+        (ainda não atingiu TP, SL, nem expirou).
+        Usado pelo scanner para evitar registar o mesmo token duas vezes
+        enquanto o sinal anterior ainda está "aberto".
+        """
+        async with self._lock:
+            return any(a.symbol == symbol for a in self._alertas)
+
     async def registar(
         self,
         symbol: str,
