@@ -387,9 +387,14 @@ async def run_scanner():
                     f" | Setup {setup or '?'}"
                 )
 
-                # notificação Telegram só para score >= 8 (priority)
-                # score 6-7: regista Notion e monitor mas não notifica
-                if priority:
+                # notificação Telegram: score >= 8 (priority) E fora das horas mortas
+                # horas mortas UTC: 18h-21h — alta taxa de Falhado (>50%)
+                # score 6-7 ou hora morta: regista Notion e monitor mas não notifica
+                _hora_utc = datetime.now(timezone.utc).hour
+                _hora_morta = 18 <= _hora_utc <= 21
+                _enviar_telegram = priority and not _hora_morta
+
+                if _enviar_telegram:
                     sent = await enviar_alerta_scalp(
                         session=session,
                         symbol=symbol,
@@ -406,7 +411,8 @@ async def run_scanner():
                         alertas_enviados += 1
                 else:
                     sent = False
-                    logger.info(f"  ↳ Score {score}/10 — registo Notion sem notificação Telegram")
+                    motivo = "hora morta (18-21h UTC)" if _hora_morta else f"Score {score}/10"
+                    logger.info(f"  ↳ {motivo} — registo Notion sem notificação Telegram")
 
                 # regista Notion e monitor para todos os scores >= 6
                 _alert_cooldown[symbol] = time.time()
@@ -417,17 +423,21 @@ async def run_scanner():
                 _atr   = result.get("atr_1h")
                 if _atr and _atr > 0:
                     if _dir == "LONG":
-                        _tp1 = _price + 0.4 * _atr
+                        _tp1 = _price + 0.4 * _atr   # TP1: 0.4×ATR
+                        _tp2 = _price + 1.0 * _atr   # TP2: 1.0×ATR
                         _sl  = _price - 1.5 * _atr
                     else:
                         _tp1 = _price - 0.4 * _atr
+                        _tp2 = _price - 1.0 * _atr
                         _sl  = _price + 1.5 * _atr
                 else:
                     if _dir == "LONG":
                         _tp1 = _price * 1.010
+                        _tp2 = _price * 1.025
                         _sl  = _price * 0.985
                     else:
                         _tp1 = _price * 0.990
+                        _tp2 = _price * 0.975
                         _sl  = _price * 1.015
 
                 notion_page_id = await log_alerta_csa(
@@ -442,6 +452,7 @@ async def run_scanner():
                     funding_rate=result["funding_rate"],
                     cfi_state=result["cfi_state"],
                     priority=priority,
+                    enviado=_enviar_telegram,
                 )
 
                 await monitor.registar(
@@ -449,6 +460,7 @@ async def run_scanner():
                     direction=_dir,
                     price_entry=_price,
                     tp1=_tp1,
+                    tp2=_tp2,
                     sl=_sl,
                     score=score,
                     setup_type=setup_type,
