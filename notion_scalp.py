@@ -39,9 +39,11 @@ async def log_alerta_csa(
     funding_rate: Optional[float],
     cfi_state: Optional[str],
     priority: bool,
+    enviado: bool = False,   # True se notificação Telegram foi enviada
 ) -> Optional[str]:  # devolve page_id ou None
     """
-    Regista alerta CSA enviado na base 'Alertas CSA' do Notion.
+    Regista alerta CSA na base 'Alertas CSA' do Notion.
+    O campo Enviado indica se gerou notificação Telegram (score>=8 + hora válida).
     """
     if not NOTION_DB_ALERTAS_CSA:
         logger.debug("NOTION_DB_ALERTAS_CSA não configurado — skip log")
@@ -68,6 +70,9 @@ async def log_alerta_csa(
         },
         "Prioritário": {
             "checkbox": priority
+        },
+        "Enviado": {
+            "checkbox": enviado      # novo campo — foi notificado via Telegram?
         },
         "Data Alerta": {
             "date": {"start": now_iso}
@@ -214,25 +219,27 @@ async def criar_bases_notion(session: aiohttp.ClientSession, page_raiz: str) -> 
             "Score":         {"number": {"format": "number"}},
             "Preço Alerta":  {"number": {"format": "number"}},
             "Prioritário":   {"checkbox": {}},
+            "Enviado":       {"checkbox": {}},
             "RSI 1h":        {"number": {"format": "number"}},
             "Funding Rate":  {"number": {"format": "percent"}},
             "Estado CFI":    {"select": {"options": [{"name": "E1"}, {"name": "E2"}, {"name": "E3"}]}},
             "Zona S/R":      {"number": {"format": "number"}},
             "Toques S/R":    {"number": {"format": "number"}},
-            "Data Alerta":       {"date": {}},
-        # campos de resultado — preenchidos pelo monitor_alertas.py
-        "Resultado":         {"select": {"options": [
-            {"name": "Pendente",   "color": "gray"},
-            {"name": "TP Hit",     "color": "green"},
-            {"name": "SL Hit",     "color": "red"},
-            {"name": "TP Tardio",  "color": "blue"},
-            {"name": "SL Tardio",  "color": "orange"},
-            {"name": "Falhado",    "color": "brown"},
-        ]}},
-        "Preco Saida":       {"number": {"format": "number"}},
-        "PnL Alerta (%)":    {"number": {"format": "number"}},
-        "Duracao (min)":     {"number": {"format": "number"}},
-        "Data Resultado":    {"date": {}},
+            "Data Alerta":   {"date": {}},
+            "Resultado":     {"select": {"options": [
+                {"name": "Pendente",   "color": "gray"},
+                {"name": "TP Hit",     "color": "green"},
+                {"name": "TP2 Hit",    "color": "green"},
+                {"name": "SL Hit",     "color": "red"},
+                {"name": "TP Tardio",  "color": "blue"},
+                {"name": "TP2 Tardio", "color": "blue"},
+                {"name": "SL Tardio",  "color": "orange"},
+                {"name": "Falhado",    "color": "brown"},
+            ]}},
+            "Preco Saida":   {"number": {"format": "number"}},
+            "PnL Alerta (%)": {"number": {"format": "number"}},
+            "Duracao (min)": {"number": {"format": "number"}},
+            "Data Resultado": {"date": {}},
         }
     }
 
