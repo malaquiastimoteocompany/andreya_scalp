@@ -387,11 +387,13 @@ async def run_scanner():
                     f" | Setup {setup or '?'}"
                 )
 
-                # notificação Telegram: score >= 8 (priority) E fora das horas mortas
-                # horas mortas UTC: 18h-21h — alta taxa de Falhado (>50%)
-                # score 6-7 ou hora morta: regista Notion e monitor mas não notifica
+                # notificação Telegram: score >= 8 (priority) E dentro da janela activa
+                # Janela activa UTC: 06h-07h + 10h-11h + 13h-14h
+                # Fora da janela: regista Notion e monitor mas não notifica
+                # Registo Notion é SEMPRE feito independentemente da hora
                 _hora_utc = datetime.now(timezone.utc).hour
-                _hora_morta = 18 <= _hora_utc <= 21
+                HORAS_ACTIVAS = {6, 7, 10, 11, 13, 14}
+                _hora_morta = _hora_utc not in HORAS_ACTIVAS
                 _enviar_telegram = priority and not _hora_morta
 
                 if _enviar_telegram:
@@ -411,7 +413,7 @@ async def run_scanner():
                         alertas_enviados += 1
                 else:
                     sent = False
-                    motivo = "hora morta (18-21h UTC)" if _hora_morta else f"Score {score}/10"
+                    motivo = f"hora {_hora_utc}h UTC fora da janela activa" if _hora_morta else f"Score {score}/10"
                     logger.info(f"  ↳ {motivo} — registo Notion sem notificação Telegram")
 
                 # regista Notion e monitor para todos os scores >= 6
