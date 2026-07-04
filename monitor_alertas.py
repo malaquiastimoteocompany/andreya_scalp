@@ -1,15 +1,40 @@
 """
 monitor_alertas.py — Monitorização automática de resultados CSA v1.0
 
-Após cada alerta enviado, monitoriza o preço e regista o resultado no Notion:
-  - TP1 atingido em <= 30 min → "TP Hit"
-  - TP1 atingido entre 30 min e 2h → "TP Tardio"
-  - Após TP1 atingido → continua a monitorizar até TP2 ou expirar 2h
-  - TP2 atingido em <= 30 min (desde entrada) → "TP2 Hit"
-  - TP2 atingido entre 30 min e 2h → "TP2 Tardio"
-  - SL atingido em <= 30 min → "SL Hit"
-  - SL atingido entre 30 min e 2h → "SL Tardio"
-  - Nada atingido em 2h → "Falhado"
+Após cada alerta enviado, monitoriza o preço e regista o resultado no Notion.
+Fecho em duas metades (50/50), igual ao manual CMF v1.6 Secção 11.2:
+
+  - TP1 atingido → fecha 50% da posição, SL da 2ª metade sobe para
+    break-even. Grava interinamente "TP Hit" (<=30min) ou "TP Tardio"
+    (30min-2h) — esta linha é reescrita quando a 2ª metade fechar.
+  - 2ª metade, depois do TP1:
+      - TP2 atingido → "TP2 Hit" (<=30min desde a entrada) / "TP2 Tardio"
+      - Break-even atingido → "BE Hit" / "BE Tardio" (a 1ª metade já
+        garantiu o ganho do TP1 — isto não é uma perda)
+      - Nada atingido em 2h → "Falhado" (a 1ª metade continua a contar
+        para o PnL final — não é um "falhanço" total, só a 2ª metade
+        ficou pelo caminho)
+  - SL original atingido ANTES do TP1 → "SL Hit" (<=30min) / "SL Tardio"
+    (30min-2h) — perda real, posição inteira, sem 50/50 (nunca chegou a
+    fechar a 1ª metade).
+  - Nada atingido em 2h, sem nunca ter tocado o TP1 → "Falhado" — posição
+    inteira, sem 50/50.
+
+  PnL Alerta (%) final = média das duas metades quando o TP1 foi atingido;
+  ou o cálculo de posição inteira quando nunca chegou ao TP1 (SL Hit/Tardio
+  ou Falhado sem TP1).
+
+CORREÇÃO 04/07/2026: até aqui, depois do TP1 a posição ficava toda aberta
+e sem SL nenhum (bug introduzido em 01/07 ao adicionar o TP2) — produziu
+perdas de -6% a -15.8% registadas como "Falhado" em vez de perda real.
+Corrigido para fecho 50/50 com SL de break-even na 2ª metade — pedido do
+Malaquias, 04/07/2026, para reflectir a prática já usada manualmente no
+CMF: "para isso temos de fechar também metade da posição no TP1".
+
+Nota operacional: as etiquetas "BE Hit"/"BE Tardio" são novas — se o campo
+"Resultado" no Notion for select com opções fixas, pode ser preciso
+adicioná-las lá (ou a 1ª escrita cria a opção automaticamente, dependendo
+das permissões da integração).
 
 Corre em paralelo com o scanner no mesmo processo Railway.
 """
@@ -42,12 +67,13 @@ class AlertaMonitorizado:
     price_entry:    float          # preço no momento do alerta
     tp1:            float
     tp2:            float          # 1.0×ATR — segundo objectivo
-    sl:             float
+    sl:             float          # SL activo — original até TP1, depois break-even
     score:          int
     setup_type:     Optional[str]
     notion_page_id: Optional[str]  # ID da página Notion a actualizar
     timestamp:      float = field(default_factory=time.time)
-    tp1_atingido:   bool  = False  # True após TP1 ser atingido
+    tp1_atingido:   bool  = False  # True após TP1 ser atingido (50% fechado)
+    pnl_metade1:    Optional[float] = None  # % da 1ª metade, fixado no TP1
 
     @property
     def idade_secs(self) -> float:
@@ -63,8 +89,10 @@ class AlertaMonitorizado:
 
     def check_resultado(self, preco_actual: float) -> Optional[str]:
         """
-        Verifica TP1, TP2 ou SL.
-        Após TP1 atingido, continua a monitorizar até TP2 ou expirar.
+        Verifica TP1, TP2 ou SL. O SL é sempre verificado — antes do TP1 é
+        o SL original (1.5×ATR, posição inteira), depois do TP1 é o
+        break-even da 2ª metade (ver __TP1__ no loop, que actualiza
+        self.sl e fixa self.pnl_metade1). Nunca fica sem stop nenhum.
         Devolve resultado ou None se ainda activo.
         """
         if self.direction == "LONG":
@@ -76,27 +104,33 @@ class AlertaMonitorizado:
             tp1_atingido = preco_actual <= self.tp1
             tp2_atingido = preco_actual <= self.tp2
 
-        # SL tem prioridade sempre (mesmo após TP1)
-        if sl_atingido and not self.tp1_atingido:
-            return "SL Hit" if self.em_janela_scalp else "SL Tardio"
+        # SL verifica-se SEMPRE — antes do TP1 é perda real (posição
+        # inteira), depois do TP1 é só a 2ª metade a voltar ao break-even
+        # (a 1ª metade já garantiu o ganho do TP1).
+        if sl_atingido:
+            if not self.tp1_atingido:
+                return "SL Hit" if self.em_janela_scalp else "SL Tardio"
+            return "BE Hit" if self.em_janela_scalp else "BE Tardio"
 
-        # Fase 2 — após TP1: monitorizar TP2
+        # Fase 2 — após TP1 (50% fechado, SL da 2ª metade em break-even)
         if self.tp1_atingido:
             if tp2_atingido:
                 return "TP2 Hit" if self.em_janela_scalp else "TP2 Tardio"
             if self.expirado:
-                return "Falhado"  # TP1 atingido mas TP2 não — regista Falhado (o TP1 já foi notificado)
-            return None           # ainda a aguardar TP2
+                return "Falhado"  # 2ª metade ficou entre break-even e TP2 até expirar
+            return None
 
-        # Fase 1 — aguardar TP1
+        # Fase 1 — aguardar TP1 (posição ainda inteira)
         if tp1_atingido:
-            # não fecha aqui — marca tp1_atingido e continua
+            # não fecha aqui — marca tp1_atingido, fixa pnl_metade1 e continua
             return "__TP1__"      # sinal interno — tratado no loop
 
         if self.expirado:
             return "Falhado"
 
         return None  # ainda activo
+
+
 
 
 # ── Monitor ───────────────────────────────────────────────────────────────────
@@ -185,20 +219,29 @@ class MonitorAlertas:
                     resultado = alerta.check_resultado(preco)
 
                     if resultado == "__TP1__":
-                        # TP1 atingido — notificar e continuar a monitorizar TP2
+                        # TP1 atingido — fecha 50%, fixa o ganho dessa metade,
+                        # sobe SL da 2ª metade para break-even, notifica e
+                        # continua a monitorizar a 2ª metade (agora protegida).
                         if not alerta.tp1_atingido:
                             alerta.tp1_atingido = True
+                            if alerta.direction == "LONG":
+                                alerta.pnl_metade1 = (preco - alerta.price_entry) / alerta.price_entry * 100
+                            else:
+                                alerta.pnl_metade1 = (alerta.price_entry - preco) / alerta.price_entry * 100
+                            alerta.sl = alerta.price_entry  # break-even da 2ª metade — CORREÇÃO 04/07
                             resultado_tp1 = "TP Hit" if alerta.em_janela_scalp else "TP Tardio"
                             logger.info(
-                                f"Monitor: {alerta.symbol} → {resultado_tp1} (TP1) | "
+                                f"Monitor: {alerta.symbol} → {resultado_tp1} (TP1, 50%) | "
                                 f"Preço ${preco:,.4f} | Entry ${alerta.price_entry:,.4f} | "
-                                f"Idade {alerta.idade_secs/60:.1f}min — aguardar TP2"
+                                f"1ª metade: {alerta.pnl_metade1:+.2f}% | "
+                                f"Idade {alerta.idade_secs/60:.1f}min — SL da 2ª metade em break-even"
                             )
                             await _registar_resultado_notion(
                                 session=session,
                                 alerta=alerta,
                                 resultado=resultado_tp1,
                                 preco_saida=preco,
+                                interino=True,
                             )
                         # não adiciona a concluídos — continua a monitorizar
 
@@ -238,21 +281,35 @@ async def _registar_resultado_notion(
     alerta: AlertaMonitorizado,
     resultado: str,
     preco_saida: float,
+    interino: bool = False,
 ) -> bool:
     """
     Actualiza a página do alerta no Notion com o resultado.
     Nomes de campos sem acentos — consistente com o schema de criação.
-    Chamado tanto no TP1 como no TP2/SL/Falhado.
+
+    interino=True: escrita feita no momento do TP1 (50% fechado) — grava
+    só a % dessa metade, esta linha vai ser reescrita quando a 2ª metade
+    fechar (BE/TP2/Falhado). interino=False (default): escrita final —
+    combina pnl_metade1 (fixado no TP1) com a % desta 2ª metade, ou usa o
+    cálculo de posição inteira se nunca chegou a atingir o TP1
+    (SL Hit/Tardio, ou Falhado sem TP1).
     """
     from config import NOTION_DB_ALERTAS_CSA
     if not NOTION_DB_ALERTAS_CSA:
         return False
 
-    # calcular PnL do alerta (independente de entrada real)
     if alerta.direction == "LONG":
-        pnl_pct = (preco_saida - alerta.price_entry) / alerta.price_entry * 100
+        pnl_desta_perna = (preco_saida - alerta.price_entry) / alerta.price_entry * 100
     else:
-        pnl_pct = (alerta.price_entry - preco_saida) / alerta.price_entry * 100
+        pnl_desta_perna = (alerta.price_entry - preco_saida) / alerta.price_entry * 100
+
+    if interino or alerta.pnl_metade1 is None:
+        # TP1 acabou de acontecer (interino), ou nunca chegou a atingir o
+        # TP1 (posição inteira, sem 50/50) — usa a perna sozinha.
+        pnl_pct = pnl_desta_perna
+    else:
+        # 2ª metade fechou — combina com a 1ª metade já fixada no TP1.
+        pnl_pct = (alerta.pnl_metade1 + pnl_desta_perna) / 2
 
     agora     = datetime.now(timezone.utc).isoformat()
     idade_min = round(alerta.idade_secs / 60, 1)
