@@ -355,5 +355,22 @@
     "zona_sr": 3.168,
     "toques_sr": 5,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-813d-9634-d6fc1304a439",
+    "token": "ANTHROPIC",
+    "direccao": "LONG",
+    "preco_alerta": 1627.43,
+    "score": 8,
+    "setup": "A",
+    "prioritario": true,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:37:43.338090+00:00",
+    "rsi_1h": 33.06,
+    "funding_rate": 0.005,
+    "estado_cfi": "E1",
+    "zona_sr": 1625.50333333,
+    "toques_sr": 3,
+    "resultado": "Pendente"
   }
 ]
