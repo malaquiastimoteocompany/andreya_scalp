@@ -2650,5 +2650,22 @@
     "zona_sr": 577.24,
     "toques_sr": 5,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-81be-abd6-e1a3e3a03c71",
+    "token": "LTC",
+    "direccao": "LONG",
+    "preco_alerta": 44.04,
+    "score": 6,
+    "setup": "A",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:45:47.990012+00:00",
+    "rsi_1h": 38.49,
+    "funding_rate": -0.0027,
+    "estado_cfi": "E1",
+    "zona_sr": 44.032,
+    "toques_sr": 5,
+    "resultado": "Pendente"
   }
 ]
