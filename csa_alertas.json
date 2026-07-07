@@ -168,5 +168,22 @@
     "zona_sr": 194.36,
     "toques_sr": 3,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-81d3-8314-cb421483bdce",
+    "token": "XMR",
+    "direccao": "SHORT",
+    "preco_alerta": 326.47,
+    "score": 7,
+    "setup": "A",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:37:07.793013+00:00",
+    "rsi_1h": 57.94,
+    "funding_rate": 0.01,
+    "estado_cfi": "E1",
+    "zona_sr": 325.67,
+    "toques_sr": 6,
+    "resultado": "Pendente"
   }
 ]
