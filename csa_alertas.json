@@ -236,5 +236,22 @@
     "zona_sr": 35.2325,
     "toques_sr": 4,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-813d-8733-ed33e842ed68",
+    "token": "ICP",
+    "direccao": "SHORT",
+    "preco_alerta": 2.222,
+    "score": 7,
+    "setup": "A",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:37:17.369305+00:00",
+    "rsi_1h": 54.82,
+    "funding_rate": 0.0038,
+    "estado_cfi": "E1",
+    "zona_sr": 2.23166667,
+    "toques_sr": 3,
+    "resultado": "Pendente"
   }
 ]
