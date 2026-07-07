@@ -3007,5 +3007,22 @@
     "zona_sr": 0.071375,
     "toques_sr": 2,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-81d6-8925-cfddf4e0144f",
+    "token": "IWM",
+    "direccao": "LONG",
+    "preco_alerta": 299.03,
+    "score": 6,
+    "setup": "A",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:46:41.866887+00:00",
+    "rsi_1h": 52.11,
+    "funding_rate": 0.0,
+    "estado_cfi": "E1",
+    "zona_sr": 298.40444444,
+    "toques_sr": 9,
+    "resultado": "Pendente"
   }
 ]
