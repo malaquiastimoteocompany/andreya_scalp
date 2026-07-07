@@ -12,6 +12,14 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
 NOTION_DB_ALERTAS_CSA  = os.environ.get("NOTION_DB_ALERTAS_CSA", "")
 NOTION_DB_TRADES_SCALP = os.environ.get("NOTION_DB_TRADES_SCALP", "")
 
+# ── GitHub (espelho em JSON dos alertas, ao lado do Notion — 07/07/2026) ─────
+# Nomes com "2" de propósito — já existe GITHUB_TOKEN/GITHUB_REPO partilhado
+# no Railway (usado pelo CFI), e o Malaquias preferiu variáveis próprias
+# para este serviço, sem risco de mexer no que já está a ser usado noutro
+# lado. Sem estas duas, github_sync.py fica em no-op silencioso — nada parte.
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN2", "")
+GITHUB_REPO  = os.environ.get("GITHUB_REPO2", "malaquiastimoteocompany/andreya_scalp")
+
 # ── Filtros de liquidez para scalp ───────────────────────────────────────────
 MIN_VOLUME_24H    = 5_000_000   # USD
 MIN_OI            = 500_000     # USD
