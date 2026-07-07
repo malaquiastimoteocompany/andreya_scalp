@@ -2344,5 +2344,22 @@
     "zona_sr": 451.34,
     "toques_sr": 2,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-81f8-acc1-f80dd7ad1e24",
+    "token": "BNB",
+    "direccao": "SHORT",
+    "preco_alerta": 578.7,
+    "score": 7,
+    "setup": "A",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:44:40.882912+00:00",
+    "rsi_1h": 41.15,
+    "funding_rate": 0.0,
+    "estado_cfi": "E1",
+    "zona_sr": 577.24,
+    "toques_sr": 5,
+    "resultado": "Pendente"
   }
 ]
