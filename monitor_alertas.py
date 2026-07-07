@@ -49,6 +49,7 @@ from typing import Optional
 import aiohttp
 
 from notion_scalp import _headers, NOTION_API
+from github_sync import actualizar_alerta as _actualizar_alerta_github
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,13 @@ async def _registar_resultado_notion(
         ) as r:
             if r.status == 200:
                 logger.info(f"Notion actualizado: {alerta.symbol} → {resultado} | PnL {pnl_pct:+.2f}%")
+                await _actualizar_alerta_github(session, alerta.notion_page_id, {
+                    "resultado":      resultado,
+                    "preco_saida":    preco_saida,
+                    "pnl_pct":        round(pnl_pct, 3),
+                    "duracao_min":    idade_min,
+                    "data_resultado": agora,
+                })
                 return True
             text = await r.text()
             logger.error(f"Notion update erro {r.status}: {text[:200]}")
