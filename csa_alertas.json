@@ -1103,5 +1103,22 @@
     "zona_sr": 451.34,
     "toques_sr": 2,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-8168-b129-f1eda968bc9b",
+    "token": "SOXL",
+    "direccao": "LONG",
+    "preco_alerta": 176.57,
+    "score": 6,
+    "setup": "N/A",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:40:28.919635+00:00",
+    "rsi_1h": 29.52,
+    "funding_rate": 0.0576,
+    "estado_cfi": "E2",
+    "zona_sr": null,
+    "toques_sr": null,
+    "resultado": "Pendente"
   }
 ]
