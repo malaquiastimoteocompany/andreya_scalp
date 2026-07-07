@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from config import NOTION_TOKEN, NOTION_DB_ALERTAS_CSA, NOTION_DB_TRADES_SCALP
+from github_sync import registar_alerta as _registar_alerta_github
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,25 @@ async def log_alerta_csa(
         ) as r:
             if r.status in (200, 201):
                 data = await r.json()
-                return data.get("id")  # devolve page_id para o monitor
+                page_id = data.get("id")
+                # Espelho em JSON no GitHub — nunca bloqueia nem derruba isto se falhar.
+                await _registar_alerta_github(session, page_id, {
+                    "token":          ticker,
+                    "direccao":       direction,
+                    "preco_alerta":   price,
+                    "score":          score,
+                    "setup":          setup_type or "N/A",
+                    "prioritario":    priority,
+                    "enviado":        enviado,
+                    "data_alerta":    now_iso,
+                    "rsi_1h":         rsi_1h,
+                    "funding_rate":   round(funding_rate * 100, 6) if funding_rate is not None else None,
+                    "estado_cfi":     cfi_state,
+                    "zona_sr":        sr_zone["price"] if sr_zone else None,
+                    "toques_sr":      sr_zone["touches"] if sr_zone else None,
+                    "resultado":      "Pendente",
+                })
+                return page_id
             text = await r.text()
             logger.error(f"Notion alertas CSA erro {r.status}: {text[:200]}")
             return None
