@@ -2378,5 +2378,22 @@
     "zona_sr": 44.032,
     "toques_sr": 5,
     "resultado": "Pendente"
+  },
+  {
+    "page_id": "396a5230-de72-81a9-92ff-e914a7bf8d72",
+    "token": "NVIDIA",
+    "direccao": "LONG",
+    "preco_alerta": 194.09,
+    "score": 7,
+    "setup": "C",
+    "prioritario": false,
+    "enviado": false,
+    "data_alerta": "2026-07-07T08:44:46.224462+00:00",
+    "rsi_1h": 36.5,
+    "funding_rate": 0.0,
+    "estado_cfi": "E1",
+    "zona_sr": 194.36,
+    "toques_sr": 3,
+    "resultado": "Pendente"
   }
 ]
