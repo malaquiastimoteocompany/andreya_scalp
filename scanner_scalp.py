@@ -84,7 +84,13 @@ def _load_cfi_states() -> dict[str, str]:
 
 def _passes_liquidity_filter(ticker: dict) -> bool:
     try:
-        vol24 = float(ticker.get("volume24", 0)) * float(ticker.get("lastPrice", 0))
+        # CORRIGIDO 07/07/2026: volume24 da MEXC já vem em USD (confirmado
+        # com dados reais — ex. SIREN_USDT tinha volume24=1.110.781, que já
+        # é ~$1.1M, não uma quantidade de moedas). Multiplicar por lastPrice
+        # estragava a conta: esmagava tokens baratos (excluía-os por engano)
+        # e inflacionava tokens caros (incluía-os por engano) — o total
+        # ficava parecido, mas o conjunto de tokens elegíveis estava errado.
+        vol24 = float(ticker.get("volume24", 0))
         if vol24 < MIN_VOLUME_24H:
             return False
         bid = float(ticker.get("bid1", 0))
@@ -278,12 +284,24 @@ async def run_scanner():
     async with aiohttp.ClientSession(connector=connector) as session:
         client = MexcClient(session)
 
+        # Universo real, calculado agora — antes disto (07/07/2026) a
+        # mensagem dizia sempre "~500 tokens MEXC", texto fixo que nunca
+        # reflectiu o filtro de facto (ver bug corrigido em
+        # _passes_liquidity_filter — volume24 já vem em USD da MEXC).
+        tickers_iniciais = await client.get_all_tickers()
+        n_elegiveis = sum(
+            1 for t in (tickers_iniciais or [])
+            if _passes_liquidity_filter(t)
+            and t.get("symbol", "") not in SYMBOL_BLACKLIST
+            and not t.get("symbol", "").endswith("STOCK_USDT")
+        )
+
         await enviar_status_scalp(
             session,
             f"CSA v1.0 activo\n"
             f"Scan interval: {SCAN_INTERVAL_SEC}s\n"
             f"Threshold: score >= 6/10\n"
-            f"Universo: ~500 tokens MEXC"
+            f"Universo: {n_elegiveis} tokens elegíveis (de {len(tickers_iniciais or [])} na MEXC)"
         )
 
         # arrancar monitor de alertas em paralelo
