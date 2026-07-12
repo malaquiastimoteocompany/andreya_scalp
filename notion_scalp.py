@@ -44,12 +44,23 @@ async def log_alerta_csa(
     executavel: bool = True,   # False quando não há Setup A/B/C — registado
                                 # só para estudo, nunca gera Telegram nem conta
                                 # como trade accionável (ver scanner_scalp.py)
+    atr_1h: Optional[float] = None,
+    tp1: Optional[float] = None,
+    tp2: Optional[float] = None,
+    sl: Optional[float] = None,
+    componentes: Optional[str] = None,  # breakdown do score, formato
+                                          # "sr_zone=2/2 | cluster=2/2 | ..."
+                                          # — adicionado 12/07/2026, ver nota
+                                          # em scanner_scalp.py
 ) -> Optional[str]:  # devolve page_id ou None
     """
     Regista alerta CSA na base 'Alertas CSA' do Notion.
     O campo Enviado indica se gerou notificação Telegram (score>=8 + hora válida).
     O campo Executável indica se o alerta tinha um setup A/B/C dominante —
     quando False, fica registado para estudo mas nunca chega a ser enviado.
+    ATR/TP1/TP2/SL e Componentes ficam gravados desde 12/07/2026 — antes
+    disto eram calculados e usados só em memória pelo monitor, sem nunca
+    chegarem a Notion/GitHub, impossibilitando auditoria posterior.
     """
     if not NOTION_DB_ALERTAS_CSA:
         logger.debug("NOTION_DB_ALERTAS_CSA não configurado — skip log")
@@ -87,6 +98,17 @@ async def log_alerta_csa(
             "date": {"start": now_iso}
         },
     }
+
+    if atr_1h is not None:
+        props["ATR 1h"] = {"number": atr_1h}
+    if tp1 is not None:
+        props["TP1"] = {"number": tp1}
+    if tp2 is not None:
+        props["TP2"] = {"number": tp2}
+    if sl is not None:
+        props["SL"] = {"number": sl}
+    if componentes:
+        props["Componentes Score"] = {"rich_text": [{"text": {"content": componentes[:2000]}}]}
 
     if rsi_1h is not None:
         props["RSI 1h"] = {"number": rsi_1h}
@@ -129,6 +151,11 @@ async def log_alerta_csa(
                     "prioritario":    priority,
                     "enviado":        enviado,
                     "executavel":     executavel,
+                    "atr_1h":         atr_1h,
+                    "tp1":            tp1,
+                    "tp2":            tp2,
+                    "sl":             sl,
+                    "componentes":    componentes,
                     "data_alerta":    now_iso,
                     "rsi_1h":         rsi_1h,
                     "funding_rate":   round(funding_rate * 100, 6) if funding_rate is not None else None,
