@@ -82,6 +82,21 @@ def _load_cfi_states() -> dict[str, str]:
 
 # ── Filtro de liquidez ────────────────────────────────────────────────────────
 
+def _calcular_spread(ticker: dict) -> Optional[float]:
+    """Spread bid-ask em fracção (0.001 = 0.1%) — mesma fórmula usada em
+    _passes_liquidity_filter, extraída para reaproveitar no registo do
+    alerta (12/07/2026)."""
+    try:
+        bid = float(ticker.get("bid1", 0))
+        ask = float(ticker.get("ask1", 0))
+        mid = (bid + ask) / 2
+        if mid <= 0:
+            return None
+        return (ask - bid) / mid
+    except (ValueError, TypeError):
+        return None
+
+
 def _passes_liquidity_filter(ticker: dict) -> bool:
     try:
         # CORRIGIDO 07/07/2026: volume24 da MEXC já vem em USD (confirmado
@@ -261,6 +276,7 @@ async def _analyze_candidate(
                 "cfi_state":    cfi_state,
                 "price":        current_price,
                 "atr_1h":       atr_1h,
+                "oi_usd":       oi_now,
             }
 
     # devolve sempre o melhor resultado (filtro de threshold feito no ciclo principal)
@@ -493,6 +509,13 @@ async def run_scanner():
                         f"{k}={v['points']}/{v['max']}"
                         for k, v in result["scoring"]["components"].items()
                     ),
+                    # gravados desde 12/07/2026 — para, com dados novos,
+                    # poder testar se afinar MIN_VOLUME_24H/MAX_SPREAD_PCT/
+                    # MIN_OI melhora o resultado (hoje são só thresholds
+                    # binários de corte, sem o valor real registado)
+                    volume_24h=float(ticker.get("volume24", 0)),
+                    spread_pct=_calcular_spread(ticker),
+                    oi_usd=result.get("oi_usd"),
                 )
 
                 await monitor.registar(
