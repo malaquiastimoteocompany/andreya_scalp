@@ -485,6 +485,14 @@ async def run_scanner():
                     priority=priority,
                     enviado=_enviar_telegram,
                     executavel=_tem_setup,
+                    atr_1h=_atr,
+                    tp1=_tp1,
+                    tp2=_tp2,
+                    sl=_sl,
+                    componentes=" | ".join(
+                        f"{k}={v['points']}/{v['max']}"
+                        for k, v in result["scoring"]["components"].items()
+                    ),
                 )
 
                 await monitor.registar(
