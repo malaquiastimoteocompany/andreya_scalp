@@ -168,12 +168,28 @@ class MexcClient:
     # ── Open Interest ─────────────────────────────────────────────────────────
 
     async def get_open_interest(self, symbol: str) -> Optional[float]:
-        """OI em USD."""
-        data = await self._get(f"/api/v1/contract/open_interest/{symbol}")
-        if not data or not data.get("data"):
+        """
+        OI via campo 'holdVol' do ticker — unidade exacta (USD vs contratos)
+        não confirmada na documentação da MEXC, ver nota abaixo.
+
+        Correcção 12/07/2026: o endpoint dedicado
+        /api/v1/contract/open_interest/{symbol} devolve 403 Access Denied
+        (não é um endpoint válido/acessível da MEXC) — get_open_interest
+        devolvia sempre None, silenciosamente, desde sempre. Consequência:
+        detect_oi_cascade nunca acumulava histórico (>=2 leituras) e o
+        Setup B nunca disparava — corrigido, porque essa detecção usa
+        variação percentual (fim/início), que é correcta seja qual for
+        a unidade de holdVol.
+        O filtro MIN_OI (comparação directa a 500_000, presumindo USD)
+        continua por confirmar — se holdVol vier em contratos, não em
+        USD, esse filtro pode estar a comparar grandezas erradas. Not
+        resolvido nesta correcção, sinalizado para verificação futura.
+        """
+        ticker = await self.get_ticker(symbol)
+        if not ticker:
             return None
         try:
-            return float(data["data"].get("openInterest", 0))
+            return float(ticker.get("holdVol", 0))
         except (ValueError, TypeError):
             return None
 
