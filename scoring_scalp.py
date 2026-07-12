@@ -203,7 +203,12 @@ def calcular_score(
     )
 
     # ── Resultado ─────────────────────────────────────────────────────────────
-    send     = score >= SCORE_MIN_ENVIO
+    # send exige também setup_type definido (A/B/C) — análise de 12/07/2026
+    # sobre 7463 alertas fechados mostrou que setup N/A (nenhum padrão
+    # dominante identificado) tinha o pior PnL médio de todos (-0.152%,
+    # n=438), apesar de ter o win rate mais alto (67.1%) — perde mais forte
+    # quando perde. Excluído para reduzir esse viés assimétrico.
+    send     = score >= SCORE_MIN_ENVIO and setup_type is not None
     priority = score >= 8
 
     return {
