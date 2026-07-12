@@ -52,6 +52,9 @@ async def log_alerta_csa(
                                           # "sr_zone=2/2 | cluster=2/2 | ..."
                                           # — adicionado 12/07/2026, ver nota
                                           # em scanner_scalp.py
+    volume_24h: Optional[float] = None,
+    spread_pct: Optional[float] = None,
+    oi_usd: Optional[float] = None,
 ) -> Optional[str]:  # devolve page_id ou None
     """
     Regista alerta CSA na base 'Alertas CSA' do Notion.
@@ -109,6 +112,12 @@ async def log_alerta_csa(
         props["SL"] = {"number": sl}
     if componentes:
         props["Componentes Score"] = {"rich_text": [{"text": {"content": componentes[:2000]}}]}
+    if volume_24h is not None:
+        props["Volume 24h"] = {"number": volume_24h}
+    if spread_pct is not None:
+        props["Spread Pct"] = {"number": round(spread_pct * 100, 4)}
+    if oi_usd is not None:
+        props["OI USD"] = {"number": oi_usd}
 
     if rsi_1h is not None:
         props["RSI 1h"] = {"number": rsi_1h}
@@ -156,6 +165,9 @@ async def log_alerta_csa(
                     "tp2":            tp2,
                     "sl":             sl,
                     "componentes":    componentes,
+                    "volume_24h":     volume_24h,
+                    "spread_pct":     spread_pct,
+                    "oi_usd":         oi_usd,
                     "data_alerta":    now_iso,
                     "rsi_1h":         rsi_1h,
                     "funding_rate":   round(funding_rate * 100, 6) if funding_rate is not None else None,
