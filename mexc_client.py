@@ -20,6 +20,7 @@ class MexcClient:
     def __init__(self, session: aiohttp.ClientSession):
         self.session = session
         self.base = MEXC_BASE
+        self._contract_size_cache: dict[str, float] = {}
 
     async def _get(self, path: str, params: dict = None) -> Optional[dict]:
         url = f"{self.base}{path}"
@@ -169,29 +170,43 @@ class MexcClient:
 
     async def get_open_interest(self, symbol: str) -> Optional[float]:
         """
-        OI via campo 'holdVol' do ticker — unidade exacta (USD vs contratos)
-        não confirmada na documentação da MEXC, ver nota abaixo.
+        OI em USD real — holdVol (contratos, via ticker) × contractSize ×
+        lastPrice.
 
-        Correcção 12/07/2026: o endpoint dedicado
-        /api/v1/contract/open_interest/{symbol} devolve 403 Access Denied
-        (não é um endpoint válido/acessível da MEXC) — get_open_interest
-        devolvia sempre None, silenciosamente, desde sempre. Consequência:
-        detect_oi_cascade nunca acumulava histórico (>=2 leituras) e o
-        Setup B nunca disparava — corrigido, porque essa detecção usa
-        variação percentual (fim/início), que é correcta seja qual for
-        a unidade de holdVol.
-        O filtro MIN_OI (comparação directa a 500_000, presumindo USD)
-        continua por confirmar — se holdVol vier em contratos, não em
-        USD, esse filtro pode estar a comparar grandezas erradas. Not
-        resolvido nesta correcção, sinalizado para verificação futura.
+        Correcção 12/07/2026 (parte 2): confirmado com dados reais que
+        'holdVol' vem em CONTRATOS, não em USD (ex.: BTC_USDT tem
+        contractSize=0.0001 — 824M de holdVol são só ~82.421 BTC, não
+        824M USD). A correcção anterior de hoje (usar holdVol em vez do
+        endpoint 403) já resolvia o Setup B, porque detect_oi_cascade usa
+        variação percentual — mas MIN_OI compara directamente a 500_000
+        (USD), e isso só fica correcto convertendo para USD aqui.
+
+        contractSize é cacheado em memória por símbolo (raramente muda),
+        para não duplicar chamadas à API em todos os ciclos.
         """
         ticker = await self.get_ticker(symbol)
         if not ticker:
             return None
         try:
-            return float(ticker.get("holdVol", 0))
+            hold_vol = float(ticker.get("holdVol", 0))
+            last_price = float(ticker.get("lastPrice", 0))
         except (ValueError, TypeError):
             return None
+        if hold_vol <= 0 or last_price <= 0:
+            return None
+
+        contract_size = self._contract_size_cache.get(symbol)
+        if contract_size is None:
+            detail = await self.get_contract_detail(symbol)
+            if not detail:
+                return None
+            try:
+                contract_size = float(detail.get("contractSize", 1))
+            except (ValueError, TypeError):
+                contract_size = 1.0
+            self._contract_size_cache[symbol] = contract_size
+
+        return hold_vol * contract_size * last_price
 
     # ── Funding Rate ──────────────────────────────────────────────────────────
 
