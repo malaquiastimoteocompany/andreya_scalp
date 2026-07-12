@@ -40,11 +40,16 @@ async def log_alerta_csa(
     funding_rate: Optional[float],
     cfi_state: Optional[str],
     priority: bool,
-    enviado: bool = False,   # True se notificação Telegram foi enviada
+    enviado: bool = False,     # True se notificação Telegram foi enviada
+    executavel: bool = True,   # False quando não há Setup A/B/C — registado
+                                # só para estudo, nunca gera Telegram nem conta
+                                # como trade accionável (ver scanner_scalp.py)
 ) -> Optional[str]:  # devolve page_id ou None
     """
     Regista alerta CSA na base 'Alertas CSA' do Notion.
     O campo Enviado indica se gerou notificação Telegram (score>=8 + hora válida).
+    O campo Executável indica se o alerta tinha um setup A/B/C dominante —
+    quando False, fica registado para estudo mas nunca chega a ser enviado.
     """
     if not NOTION_DB_ALERTAS_CSA:
         logger.debug("NOTION_DB_ALERTAS_CSA não configurado — skip log")
@@ -74,6 +79,9 @@ async def log_alerta_csa(
         },
         "Enviado": {
             "checkbox": enviado      # novo campo — foi notificado via Telegram?
+        },
+        "Executável": {
+            "checkbox": executavel   # False = sem setup A/B/C, só para estudo
         },
         "Data Alerta": {
             "date": {"start": now_iso}
@@ -120,6 +128,7 @@ async def log_alerta_csa(
                     "setup":          setup_type or "N/A",
                     "prioritario":    priority,
                     "enviado":        enviado,
+                    "executavel":     executavel,
                     "data_alerta":    now_iso,
                     "rsi_1h":         rsi_1h,
                     "funding_rate":   round(funding_rate * 100, 6) if funding_rate is not None else None,
