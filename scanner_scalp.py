@@ -406,13 +406,19 @@ async def run_scanner():
                 )
 
                 # notificação Telegram: score >= 8 (priority) E dentro da janela activa
+                # E com setup A/B/C definido — sem setup dominante, regista-se
+                # sempre (para estudo, ver análise 12/07/2026) mas nunca conta
+                # como accionável nem gera Telegram, porque testámos e os N/A
+                # explícitos (mesma condição, período anterior) tiveram o pior
+                # PnL médio de todos os grupos (-0.152%, n=438).
                 # Janela activa UTC: 06h-07h + 10h-11h + 13h-14h
                 # Fora da janela: regista Notion e monitor mas não notifica
-                # Registo Notion é SEMPRE feito independentemente da hora
+                # Registo Notion é SEMPRE feito independentemente da hora ou do setup
                 _hora_utc = datetime.now(timezone.utc).hour
                 HORAS_ACTIVAS = {6, 7, 10, 11, 13, 14}
                 _hora_morta = _hora_utc not in HORAS_ACTIVAS
-                _enviar_telegram = priority and not _hora_morta
+                _tem_setup = setup_type is not None
+                _enviar_telegram = priority and not _hora_morta and _tem_setup
 
                 if _enviar_telegram:
                     sent = await enviar_alerta_scalp(
@@ -431,7 +437,12 @@ async def run_scanner():
                         alertas_enviados += 1
                 else:
                     sent = False
-                    motivo = f"hora {_hora_utc}h UTC fora da janela activa" if _hora_morta else f"Score {score}/10"
+                    if not _tem_setup:
+                        motivo = "sem setup A/B/C dominante — registo para estudo, não executável"
+                    elif _hora_morta:
+                        motivo = f"hora {_hora_utc}h UTC fora da janela activa"
+                    else:
+                        motivo = f"Score {score}/10"
                     logger.info(f"  ↳ {motivo} — registo Notion sem notificação Telegram")
 
                 # regista Notion e monitor para todos os scores >= 6
@@ -473,6 +484,7 @@ async def run_scanner():
                     cfi_state=result["cfi_state"],
                     priority=priority,
                     enviado=_enviar_telegram,
+                    executavel=_tem_setup,
                 )
 
                 await monitor.registar(
