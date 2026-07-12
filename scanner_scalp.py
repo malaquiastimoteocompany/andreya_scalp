@@ -356,8 +356,14 @@ async def run_scanner():
                 sym   = t.get("symbol", "")
                 state = _cfi_states.get(sym, "E1")
                 prio  = {"E3": 3, "E2": 2, "E1": 1}.get(state, 0)
+                # CORRIGIDO 12/07/2026: mesmo bug do filtro de liquidez
+                # (07/07/2026) reintroduzido aqui — volume24 já vem em USD
+                # da MEXC, multiplicar por lastPrice inflacionava tokens
+                # caros e esmagava tokens baratos na ordenação. Como só
+                # entram 3 alertas por ciclo, isto enviesava sistematicamente
+                # QUEM chegava a ser analisado, não só um número de log.
                 try:
-                    vol = float(t.get("volume24", 0)) * float(t.get("lastPrice", 0))
+                    vol = float(t.get("volume24", 0))
                 except Exception:
                     vol = 0
                 return (prio, vol)
