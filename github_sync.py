@@ -74,8 +74,27 @@ async def _carregar(session: aiohttp.ClientSession) -> tuple[list[dict], Optiona
             texto = await r.text()
             raise RuntimeError(f"GitHub GET {r.status}: {texto[:200]}")
         dados = await r.json()
-        conteudo = base64.b64decode(dados["content"]).decode()
-        return json.loads(conteudo), dados["sha"]
+        sha = dados["sha"]
+        conteudo_b64 = dados.get("content")
+
+    # A Contents API não devolve 'content' inline para ficheiros >~1MB (vem
+    # string vazia, encoding "none") — foi isto que parou o sync em silêncio
+    # a partir de 08/07/2026 quando o ficheiro cruzou 1MB (mesma limitação já
+    # corrigida do lado do S2b, s2b_outcomes_v2.json). Correcção 12/07/2026:
+    # nesse caso, ir buscar via Git Data API (blobs), sem o mesmo limite.
+    if not conteudo_b64:
+        blob_url = f"{GITHUB_API}/repos/{GITHUB_REPO}/git/blobs/{sha}"
+        async with session.get(
+            blob_url, headers=_headers(), timeout=aiohttp.ClientTimeout(total=30)
+        ) as rb:
+            if rb.status != 200:
+                texto = await rb.text()
+                raise RuntimeError(f"GitHub GET blob {rb.status}: {texto[:200]}")
+            dados_blob = await rb.json()
+            conteudo_b64 = dados_blob["content"]
+
+    conteudo = base64.b64decode(conteudo_b64).decode()
+    return json.loads(conteudo), sha
 
 
 async def _guardar(
